@@ -14,6 +14,7 @@
     <string name="action_cancel">Cancelar</string>
     <string name="action_edit">Editar</string>
     <string name="action_delete">Eliminar</string>
+    <string name="action_add_anyway">Agregar igual</string>
     <string name="action_delete_selected">Eliminar seleccionados</string>
     <string name="delete_confirm_title">Confirmar eliminacion</string>
     <string name="delete_confirm_named">¿Seguro que deseas eliminar "%1$s"?</string>
@@ -138,6 +139,10 @@
     <string name="expenses_fixed_recurring_hint">Se replica automaticamente en este mes y los siguientes</string>
     <string name="expenses_variable_item_fallback">Gasto variable</string>
     <string name="expenses_delete_item_fallback">este gasto</string>
+    <string name="expenses_duplicate_title">Posible gasto duplicado</string>
+    <string name="expenses_duplicate_message">Ya existe al menos un gasto con un nombre igual o muy parecido a "%1$s" en este mes. &#191;Quer&#233;s agregarlo igual?</string>
+    <string name="expenses_duplicate_item">%1$s - %2$s</string>
+    <string name="expenses_duplicate_confirm">Agregar igual</string>
 
     <string name="dialog_fixed_title_new">Nuevo gasto fijo</string>
     <string name="dialog_fixed_title_edit">Editar gasto fijo</string>
@@ -190,14 +195,14 @@
 
     <string name="donations_title">Donativos</string>
     <string name="donations_add_cd">Agregar donativo</string>
-    <string name="donations_summary_hint">Podés combinar montos manuales o porcentajes de tus ingresos totales del mes (%1$s).</string>
+    <string name="donations_summary_hint">Podés combinar montos manuales o porcentajes de tu ingreso principal del mes (%1$s).</string>
     <string name="donations_empty_state">Todavia no hay donativos cargados para este mes.</string>
-    <string name="donations_percent_summary">%1$.2f%% de los ingresos totales</string>
+    <string name="donations_percent_summary">%1$.2f%% del ingreso principal</string>
     <string name="donations_manual_summary">Monto manual</string>
     <string name="donations_item_fallback">Donativo</string>
     <string name="donations_paid_total">Pagado</string>
     <string name="donations_pending_total">Pendiente</string>
-    <string name="donations_use_percentage">Calcular como porcentaje de los ingresos totales</string>
+    <string name="donations_use_percentage">Calcular como porcentaje del ingreso principal</string>
     <string name="donations_percentage_label">Porcentaje</string>
     <string name="donations_percentage_hint">Ejemplo: 10 para un diezmo tradicional</string>
     <string name="dialog_donation_title_new">Nuevo donativo</string>

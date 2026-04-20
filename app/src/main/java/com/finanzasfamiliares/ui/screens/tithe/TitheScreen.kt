@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,8 +54,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.finanzasfamiliares.R
 import com.finanzasfamiliares.data.model.Donation
 import com.finanzasfamiliares.data.model.IncomeCurrency
+import com.finanzasfamiliares.ui.components.MonthSwipeContainer
 import com.finanzasfamiliares.ui.components.MonthHeader
 import com.finanzasfamiliares.ui.components.ReadOnlyBanner
+import com.finanzasfamiliares.ui.components.clearZeroOnFocus
 import com.finanzasfamiliares.ui.components.formatUSD
 import com.finanzasfamiliares.ui.components.formatUYU
 import com.finanzasfamiliares.ui.components.toInputAmount
@@ -73,13 +76,21 @@ private sealed interface DonationDeleteRequest {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewModel()) {
+fun DonationsScreen(
+    yearMonth: String,
+    canGoPreviousMonth: Boolean = false,
+    canGoNextMonth: Boolean = false,
+    onGoPreviousMonth: () -> Unit = {},
+    onGoNextMonth: () -> Unit = {},
+    headerContent: @Composable () -> Unit = {},
+    viewModel: DonationsViewModel = hiltViewModel()
+) {
     LaunchedEffect(yearMonth) { viewModel.setYearMonth(yearMonth) }
     val data by viewModel.monthData.collectAsState()
     val isReadOnly by viewModel.isReadOnly.collectAsState()
     val config by viewModel.currentConfig.collectAsState()
     val incomeCurrency = config.incomeCurrency
-    val totalIncomeUYU = data?.totalIncomeInUYU(incomeCurrency) ?: 0.0
+    val primaryIncomeUYU = data?.primaryIncomeInUYU(incomeCurrency) ?: 0.0
     var showDonationDialog by remember { mutableStateOf(false) }
     var editingDonation by remember { mutableStateOf<Donation?>(null) }
     var selectedDonationIds by remember { mutableStateOf(setOf<String>()) }
@@ -94,9 +105,9 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
     }
 
     val filteredDonations = allDonations.filter { matchesPayment(it.isPaid) }
-    val visibleDonationsUYU = filteredDonations.sumOf { it.totalUYU(totalIncomeUYU, data?.cardExchangeRate ?: 0.0) }
-    val paidDonationsUYU = allDonations.filter { it.isPaid }.sumOf { it.totalUYU(totalIncomeUYU, data?.cardExchangeRate ?: 0.0) }
-    val pendingDonationsUYU = allDonations.filter { !it.isPaid }.sumOf { it.totalUYU(totalIncomeUYU, data?.cardExchangeRate ?: 0.0) }
+    val visibleDonationsUYU = filteredDonations.sumOf { it.totalUYU(primaryIncomeUYU, data?.cardExchangeRate ?: 0.0) }
+    val paidDonationsUYU = allDonations.filter { it.isPaid }.sumOf { it.totalUYU(primaryIncomeUYU, data?.cardExchangeRate ?: 0.0) }
+    val pendingDonationsUYU = allDonations.filter { !it.isPaid }.sumOf { it.totalUYU(primaryIncomeUYU, data?.cardExchangeRate ?: 0.0) }
 
     fun toggleSelection(id: String) {
         selectedDonationIds = if (selectedDonationIds.contains(id)) {
@@ -107,6 +118,7 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             if (!isReadOnly && selectedDonationIds.isEmpty()) {
                 FloatingActionButton(onClick = { showDonationDialog = true }) {
@@ -115,23 +127,26 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
             }
         }
     ) { padding ->
-        LazyColumn(
+        MonthSwipeContainer(
+            canGoPrevious = canGoPreviousMonth,
+            canGoNext = canGoNextMonth,
+            onGoPrevious = onGoPreviousMonth,
+            onGoNext = onGoNextMonth,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(bottom = 80.dp)
+                .padding(padding)
         ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
             if (isReadOnly) {
                 item { ReadOnlyBanner() }
             }
 
             item {
-                Spacer(Modifier.height(16.dp))
-                MonthHeader(
-                    yearMonth = yearMonth,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-                Spacer(Modifier.height(12.dp))
+                headerContent()
+                Spacer(Modifier.height(8.dp))
             }
 
             if (!isReadOnly && selectedDonationIds.isNotEmpty()) {
@@ -181,7 +196,7 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
                         Text(
                             stringResource(
                                 R.string.donations_summary_hint,
-                                totalIncomeUYU.formatUYU()
+                                primaryIncomeUYU.formatUYU()
                             ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -223,7 +238,7 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
             items(filteredDonations, key = { it.id }) { donation ->
                 DonationRow(
                     donation = donation,
-                    totalIncomeUYU = totalIncomeUYU,
+                    primaryIncomeUYU = primaryIncomeUYU,
                     exchangeRate = data?.cardExchangeRate ?: 0.0,
                     readOnly = isReadOnly,
                     selected = selectedDonationIds.contains(donation.id),
@@ -235,13 +250,14 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
                 )
             }
 
-            if (filteredDonations.isEmpty()) {
-                item {
-                    Text(
-                        stringResource(R.string.donations_empty_state),
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.outline
-                    )
+                if (filteredDonations.isEmpty()) {
+                    item {
+                        Text(
+                            stringResource(R.string.donations_empty_state),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
                 }
             }
         }
@@ -325,7 +341,7 @@ private fun DonationSummaryRow(label: String, value: String) {
 @OptIn(ExperimentalFoundationApi::class)
 private fun DonationRow(
     donation: Donation,
-    totalIncomeUYU: Double,
+    primaryIncomeUYU: Double,
     exchangeRate: Double,
     readOnly: Boolean,
     selected: Boolean,
@@ -366,7 +382,7 @@ private fun DonationRow(
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    donation.totalUYU(totalIncomeUYU, exchangeRate).formatUYU(),
+                    donation.totalUYU(primaryIncomeUYU, exchangeRate).formatUYU(),
                     fontWeight = FontWeight.Medium
                 )
                 if (!selectionMode) {
@@ -452,6 +468,7 @@ private fun DonationDialog(
                     OutlinedTextField(
                         value = amount,
                         onValueChange = { amount = it },
+                        modifier = Modifier.clearZeroOnFocus(amount) { amount = it },
                         label = { Text(stringResource(R.string.common_amount_label)) },
                         prefix = {
                             Text(

@@ -11,13 +11,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -72,6 +78,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.finanzasfamiliares.R
@@ -82,13 +89,17 @@ import com.finanzasfamiliares.data.model.FixedExpense
 import com.finanzasfamiliares.data.model.IncomeCurrency
 import com.finanzasfamiliares.data.model.MoneyEntry
 import com.finanzasfamiliares.ui.components.MonthHeader
+import com.finanzasfamiliares.ui.components.MonthSwipeContainer
 import com.finanzasfamiliares.ui.components.ReadOnlyBanner
 import com.finanzasfamiliares.ui.components.SectionHeader
+import com.finanzasfamiliares.ui.components.clearZeroOnFocus
 import com.finanzasfamiliares.ui.components.formatUSD
 import com.finanzasfamiliares.ui.components.formatUYU
 import com.finanzasfamiliares.ui.components.toInputAmount
+import java.text.Normalizer
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.UUID
 
 private enum class ExpenseSection {
@@ -109,9 +120,80 @@ private sealed interface ExpenseDeleteRequest {
     data class Bulk(val keys: Set<String>) : ExpenseDeleteRequest
 }
 
+private data class DuplicateExpenseCandidate(
+    val normalizedName: String,
+    val typeLabel: String,
+    val amountLabel: String
+)
+
+private data class DuplicateExpenseMatch(
+    val typeLabel: String,
+    val amountLabel: String
+)
+
+private val DuplicateWhitespaceRegex = "\\s+".toRegex()
+private val DuplicateDiacriticsRegex = "\\p{Mn}+".toRegex()
+
+private fun normalizeExpenseNameForDuplicateCheck(value: String): String {
+    val normalized = Normalizer.normalize(value, Normalizer.Form.NFD)
+    return normalized
+        .replace(DuplicateDiacriticsRegex, "")
+        .lowercase()
+        .replace(DuplicateWhitespaceRegex, " ")
+        .trim()
+}
+
+private fun amountSearchTokens(value: Double): Set<String> {
+    val formatted = String.format(Locale.US, "%.2f", value)
+    val trimmed = formatted.removeSuffix(".00")
+    val integerPart = formatted.substringBefore(".")
+    return buildSet {
+        add(formatted)
+        add(formatted.replace(".", ","))
+        add(trimmed)
+        add(trimmed.replace(".", ","))
+        add(integerPart)
+    }
+}
+
+private fun matchesExpenseSearch(
+    rawQuery: String,
+    textFields: List<String>,
+    numericFields: List<Double> = emptyList()
+): Boolean {
+    val query = rawQuery.trim()
+    if (query.isBlank()) return true
+
+    val normalizedQuery = normalizeExpenseNameForDuplicateCheck(query)
+    if (textFields.any { normalizeExpenseNameForDuplicateCheck(it).contains(normalizedQuery) }) {
+        return true
+    }
+
+    val amountQuery = query
+        .lowercase(Locale.ROOT)
+        .replace("u\$s", "")
+        .replace("us\$", "")
+        .replace("$", "")
+        .replace(" ", "")
+
+    if (amountQuery.isBlank()) return false
+
+    return numericFields.any { amount ->
+        amountSearchTokens(amount).any { token -> token.contains(amountQuery) }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewModel()) {
+fun ExpensesScreen(
+    yearMonth: String,
+    canGoPreviousMonth: Boolean = false,
+    canGoNextMonth: Boolean = false,
+    onGoPreviousMonth: () -> Unit = {},
+    onGoNextMonth: () -> Unit = {},
+    headerContent: @Composable () -> Unit = {},
+    viewModel: ExpensesViewModel = hiltViewModel()
+) {
     LaunchedEffect(yearMonth) { viewModel.setYearMonth(yearMonth) }
     val data by viewModel.monthData.collectAsState()
     val isReadOnly by viewModel.isReadOnly.collectAsState()
@@ -131,7 +213,7 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
     var collapsedSections by remember { mutableStateOf(setOf<ExpenseSection>()) }
     var selectedExpenseKeys by remember { mutableStateOf(setOf<String>()) }
     val cardRate = data?.cardExchangeRate ?: 0.0
-    val normalizedQuery = searchQuery.trim().lowercase()
+    val normalizedQuery = searchQuery.trim()
     val allSections = remember {
         setOf(
             ExpenseSection.FIXED,
@@ -140,12 +222,6 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
             ExpenseSection.DEBT
         )
     }
-    val areAllCollapsed = collapsedSections.size == allSections.size
-
-    fun matchesQuery(name: String, category: String): Boolean =
-        normalizedQuery.isBlank() ||
-            name.lowercase().contains(normalizedQuery) ||
-            category.lowercase().contains(normalizedQuery)
 
     fun matchesPayment(isPaid: Boolean): Boolean = when (paymentFilter) {
         PaymentFilter.ALL -> true
@@ -153,49 +229,317 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
         PaymentFilter.PAID -> isPaid
     }
 
-    val matchedFixedExpenses = (data?.fixedExpenses ?: emptyList()).filter {
-        matchesQuery(it.name, it.category)
+    val fixedExpenses = data?.fixedExpenses ?: emptyList()
+    val variableExpenses = data?.variableExpenses ?: emptyList()
+    val cardExpenses = data?.cardExpenses ?: emptyList()
+    val debts = data?.debts ?: emptyList()
+    val fixedTypeLabel = stringResource(R.string.expenses_section_fixed)
+    val variableTypeLabel = stringResource(R.string.expenses_section_variable)
+    val cardTypeLabel = stringResource(R.string.expenses_section_card)
+    val debtTypeLabel = stringResource(R.string.expenses_section_debt)
+    val cardPunctualLabel = stringResource(R.string.card_kind_punctual)
+    val cardRecurringLabel = stringResource(R.string.card_kind_recurring)
+    val cardInstallmentLabel = stringResource(R.string.card_kind_installment)
+    val usdShortLabel = stringResource(R.string.common_currency_usd_short)
+    val uyuShortLabel = stringResource(R.string.common_currency_uyu_short)
+    val debtInstallmentsLabel = stringResource(R.string.dialog_debt_installment_total)
+
+    fun formatDuplicateAmount(isUSD: Boolean, amountUSD: Double, totalUYU: Double): String =
+        if (isUSD) {
+            "${amountUSD.formatUSD()} (${totalUYU.formatUYU()})"
+        } else {
+            totalUYU.formatUYU()
+        }
+
+    val duplicateCandidates = remember(
+        fixedExpenses,
+        variableExpenses,
+        cardExpenses,
+        debts,
+        cardRate,
+        fixedTypeLabel,
+        variableTypeLabel,
+        cardTypeLabel,
+        debtTypeLabel,
+        cardPunctualLabel,
+        cardRecurringLabel,
+        cardInstallmentLabel
+    ) {
+        buildList {
+            fixedExpenses.forEach { expense ->
+                add(
+                    DuplicateExpenseCandidate(
+                        normalizedName = normalizeExpenseNameForDuplicateCheck(expense.name),
+                        typeLabel = fixedTypeLabel,
+                        amountLabel = formatDuplicateAmount(expense.isInUSD(), expense.amountUSD, expense.totalUYU(cardRate))
+                    )
+                )
+            }
+            variableExpenses.forEach { expense ->
+                add(
+                    DuplicateExpenseCandidate(
+                        normalizedName = normalizeExpenseNameForDuplicateCheck(expense.name),
+                        typeLabel = variableTypeLabel,
+                        amountLabel = formatDuplicateAmount(expense.isInUSD(), expense.amountUSD, expense.totalUYU(cardRate))
+                    )
+                )
+            }
+            cardExpenses.forEach { expense ->
+                val cardKindLabel = when (expense.kind) {
+                    CardExpenseKind.RECURRING -> cardRecurringLabel
+                    CardExpenseKind.INSTALLMENT -> cardInstallmentLabel
+                    else -> cardPunctualLabel
+                }
+                add(
+                    DuplicateExpenseCandidate(
+                        normalizedName = normalizeExpenseNameForDuplicateCheck(expense.name),
+                        typeLabel = "$cardTypeLabel - $cardKindLabel",
+                        amountLabel = formatDuplicateAmount(expense.isInUSD(), expense.amountUSD, expense.totalUYU(cardRate))
+                    )
+                )
+            }
+            debts.forEach { debt ->
+                add(
+                    DuplicateExpenseCandidate(
+                        normalizedName = normalizeExpenseNameForDuplicateCheck(debt.name),
+                        typeLabel = debtTypeLabel,
+                        amountLabel = formatDuplicateAmount(debt.isInUSD(), debt.amountUSD, debt.totalUYU(cardRate))
+                    )
+                )
+            }
+        }.filter { it.normalizedName.isNotBlank() }
     }
-    val matchedVariableExpenses = (data?.variableExpenses ?: emptyList()).filter {
-        matchesQuery(it.name, it.category)
+
+    fun findDuplicateMatches(name: String): List<DuplicateExpenseMatch> {
+        val normalizedName = normalizeExpenseNameForDuplicateCheck(name)
+        if (normalizedName.isBlank()) return emptyList()
+        return duplicateCandidates
+            .filter { it.normalizedName == normalizedName }
+            .map { DuplicateExpenseMatch(typeLabel = it.typeLabel, amountLabel = it.amountLabel) }
     }
-    val matchedCardExpenses = (data?.cardExpenses ?: emptyList()).filter {
-        matchesQuery(it.name, it.category)
+
+    val matchedFixedExpenses = remember(
+        fixedExpenses,
+        normalizedQuery,
+        cardRate,
+        fixedTypeLabel,
+        usdShortLabel,
+        uyuShortLabel
+    ) {
+        fixedExpenses.filter {
+            matchesExpenseSearch(
+                rawQuery = normalizedQuery,
+                textFields = listOf(
+                    it.name,
+                    it.category,
+                    fixedTypeLabel,
+                    if (it.isInUSD()) usdShortLabel else uyuShortLabel
+                ),
+                numericFields = buildList {
+                    add(it.amountUYU)
+                    add(it.totalUYU(cardRate))
+                    if (it.isInUSD()) add(it.amountUSD)
+                }
+            )
+        }
     }
-    val matchedDebts = (data?.debts ?: emptyList()).filter {
-        matchesQuery(it.name, it.category)
+    val matchedVariableExpenses = remember(
+        variableExpenses,
+        normalizedQuery,
+        cardRate,
+        variableTypeLabel,
+        usdShortLabel,
+        uyuShortLabel
+    ) {
+        variableExpenses.filter {
+            matchesExpenseSearch(
+                rawQuery = normalizedQuery,
+                textFields = listOf(
+                    it.name,
+                    it.category,
+                    variableTypeLabel,
+                    if (it.isInUSD()) usdShortLabel else uyuShortLabel
+                ),
+                numericFields = buildList {
+                    add(it.amountUYU)
+                    add(it.totalUYU(cardRate))
+                    if (it.isInUSD()) add(it.amountUSD)
+                }
+            )
+        }
     }
-    val filteredFixedExpenses = matchedFixedExpenses.filter { matchesPayment(it.isPaid) }
-    val filteredVariableExpenses = matchedVariableExpenses.filter { matchesPayment(it.isPaid) }
-    val filteredCardExpenses = matchedCardExpenses.filter { matchesPayment(it.isPaid) }
-    val filteredDebts = matchedDebts.filter { matchesPayment(it.isPaid) }
-    val allMonthCardExpenses = data?.cardExpenses ?: emptyList()
-    val fixedExpanded = !collapsedSections.contains(ExpenseSection.FIXED)
-    val variableExpanded = !collapsedSections.contains(ExpenseSection.VARIABLE)
-    val cardExpanded = !collapsedSections.contains(ExpenseSection.CARD)
-    val debtExpanded = !collapsedSections.contains(ExpenseSection.DEBT)
+    val matchedCardExpenses = remember(
+        cardExpenses,
+        normalizedQuery,
+        cardRate,
+        cardTypeLabel,
+        cardPunctualLabel,
+        cardRecurringLabel,
+        cardInstallmentLabel,
+        usdShortLabel,
+        uyuShortLabel
+    ) {
+        cardExpenses.filter { expense ->
+            val kindLabel = when (expense.kind) {
+                CardExpenseKind.RECURRING -> cardRecurringLabel
+                CardExpenseKind.INSTALLMENT -> cardInstallmentLabel
+                else -> cardPunctualLabel
+            }
+            matchesExpenseSearch(
+                rawQuery = normalizedQuery,
+                textFields = listOf(
+                    expense.name,
+                    expense.category,
+                    cardTypeLabel,
+                    kindLabel,
+                    if (expense.isInUSD()) usdShortLabel else uyuShortLabel
+                ),
+                numericFields = buildList {
+                    add(expense.amountUYU)
+                    add(expense.totalUYU(cardRate))
+                    if (expense.isInUSD()) add(expense.amountUSD)
+                }
+            )
+        }
+    }
+    val matchedDebts = remember(
+        debts,
+        normalizedQuery,
+        cardRate,
+        debtTypeLabel,
+        debtInstallmentsLabel,
+        usdShortLabel,
+        uyuShortLabel
+    ) {
+        debts.filter {
+            matchesExpenseSearch(
+                rawQuery = normalizedQuery,
+                textFields = listOf(
+                    it.name,
+                    it.category,
+                    debtTypeLabel,
+                    debtInstallmentsLabel,
+                    if (it.isInUSD()) usdShortLabel else uyuShortLabel
+                ),
+                numericFields = buildList {
+                    add(it.amountUYU)
+                    add(it.totalUYU(cardRate))
+                    if (it.isInUSD()) add(it.amountUSD)
+                }
+            )
+        }
+    }
+    val filteredFixedExpenses = remember(matchedFixedExpenses, paymentFilter) {
+        matchedFixedExpenses.filter { matchesPayment(it.isPaid) }
+    }
+    val filteredVariableExpenses = remember(matchedVariableExpenses, paymentFilter) {
+        matchedVariableExpenses.filter { matchesPayment(it.isPaid) }
+    }
+    val filteredCardExpenses = remember(matchedCardExpenses, paymentFilter) {
+        matchedCardExpenses.filter { matchesPayment(it.isPaid) }
+    }
+    val filteredDebts = remember(matchedDebts, paymentFilter) {
+        matchedDebts.filter { matchesPayment(it.isPaid) }
+    }
+    val hasActiveVisibilityFilter = normalizedQuery.isNotBlank() || paymentFilter != PaymentFilter.ALL
+    val sectionsWithVisibleResults = remember(
+        filteredFixedExpenses,
+        filteredVariableExpenses,
+        filteredCardExpenses,
+        filteredDebts
+    ) {
+        buildSet {
+            if (filteredFixedExpenses.isNotEmpty()) add(ExpenseSection.FIXED)
+            if (filteredVariableExpenses.isNotEmpty()) add(ExpenseSection.VARIABLE)
+            if (filteredCardExpenses.isNotEmpty()) add(ExpenseSection.CARD)
+            if (filteredDebts.isNotEmpty()) add(ExpenseSection.DEBT)
+        }
+    }
+    val effectiveCollapsedSections = remember(
+        collapsedSections,
+        hasActiveVisibilityFilter,
+        allSections,
+        sectionsWithVisibleResults
+    ) {
+        if (hasActiveVisibilityFilter) {
+            allSections - sectionsWithVisibleResults
+        } else {
+            collapsedSections
+        }
+    }
+    val allMonthCardExpenses = cardExpenses
+    val areAllCollapsed = effectiveCollapsedSections.size == allSections.size
+    val fixedExpanded = !effectiveCollapsedSections.contains(ExpenseSection.FIXED)
+    val variableExpanded = !effectiveCollapsedSections.contains(ExpenseSection.VARIABLE)
+    val cardExpanded = !effectiveCollapsedSections.contains(ExpenseSection.CARD)
+    val debtExpanded = !effectiveCollapsedSections.contains(ExpenseSection.DEBT)
     val allCardPaid = allMonthCardExpenses.isNotEmpty() && allMonthCardExpenses.all { it.isPaid }
     val anyCardPaid = allMonthCardExpenses.any { it.isPaid }
-    val visibleTotalUYU =
-        (if (fixedExpanded) filteredFixedExpenses.sumOf { it.amountUYU } else 0.0) +
-        (if (variableExpanded) filteredVariableExpenses.filter { !it.isInUSD() }.sumOf { it.amountUYU } else 0.0) +
-        (if (cardExpanded) filteredCardExpenses.filter { !it.isInUSD() }.sumOf { it.amountUYU } else 0.0) +
-        (if (debtExpanded) filteredDebts.filter { !it.isInUSD() }.sumOf { it.amountUYU } else 0.0)
-    val visibleTotalUSD =
+    val visibleTotalUYU = remember(
+        filteredFixedExpenses,
+        filteredVariableExpenses,
+        filteredCardExpenses,
+        filteredDebts,
+        fixedExpanded,
+        variableExpanded,
+        cardExpanded,
+        debtExpanded
+    ) {
+        (if (fixedExpanded) filteredFixedExpenses.filter { !it.isInUSD() }.sumOf { it.amountUYU } else 0.0) +
+            (if (variableExpanded) filteredVariableExpenses.filter { !it.isInUSD() }.sumOf { it.amountUYU } else 0.0) +
+            (if (cardExpanded) filteredCardExpenses.filter { !it.isInUSD() }.sumOf { it.amountUYU } else 0.0) +
+            (if (debtExpanded) filteredDebts.filter { !it.isInUSD() }.sumOf { it.amountUYU } else 0.0)
+    }
+    val visibleTotalUSD = remember(
+        filteredFixedExpenses,
+        filteredVariableExpenses,
+        filteredCardExpenses,
+        filteredDebts,
+        fixedExpanded,
+        variableExpanded,
+        cardExpanded,
+        debtExpanded
+    ) {
+        (if (fixedExpanded) filteredFixedExpenses.filter { it.isInUSD() }.sumOf { it.amountUSD } else 0.0) +
         (if (variableExpanded) filteredVariableExpenses.filter { it.isInUSD() }.sumOf { it.amountUSD } else 0.0) +
-        (if (cardExpanded) filteredCardExpenses.filter { it.isInUSD() }.sumOf { it.amountUSD } else 0.0) +
-        (if (debtExpanded) filteredDebts.filter { it.isInUSD() }.sumOf { it.amountUSD } else 0.0)
-    val visibleTotalCalculated = visibleTotalUYU + (visibleTotalUSD * cardRate)
-    val paidTotalCalculated =
-        (if (fixedExpanded) matchedFixedExpenses.filter { it.isPaid }.sumOf { it.amountUYU } else 0.0) +
-        (if (variableExpanded) matchedVariableExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
-        (if (cardExpanded) matchedCardExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
-        (if (debtExpanded) matchedDebts.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0)
-    val pendingTotalCalculated =
-        (if (fixedExpanded) matchedFixedExpenses.filter { !it.isPaid }.sumOf { it.amountUYU } else 0.0) +
-        (if (variableExpanded) matchedVariableExpenses.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
-        (if (cardExpanded) matchedCardExpenses.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
-        (if (debtExpanded) matchedDebts.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0)
+            (if (cardExpanded) filteredCardExpenses.filter { it.isInUSD() }.sumOf { it.amountUSD } else 0.0) +
+            (if (debtExpanded) filteredDebts.filter { it.isInUSD() }.sumOf { it.amountUSD } else 0.0)
+    }
+    val visibleTotalCalculated = remember(visibleTotalUYU, visibleTotalUSD, cardRate) {
+        visibleTotalUYU + (visibleTotalUSD * cardRate)
+    }
+    val paidTotalCalculated = remember(
+        matchedFixedExpenses,
+        matchedVariableExpenses,
+        matchedCardExpenses,
+        matchedDebts,
+        fixedExpanded,
+        variableExpanded,
+        cardExpanded,
+        debtExpanded,
+        cardRate
+    ) {
+        (if (fixedExpanded) matchedFixedExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
+            (if (variableExpanded) matchedVariableExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
+            (if (cardExpanded) matchedCardExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
+            (if (debtExpanded) matchedDebts.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0)
+    }
+    val pendingTotalCalculated = remember(
+        matchedFixedExpenses,
+        matchedVariableExpenses,
+        matchedCardExpenses,
+        matchedDebts,
+        fixedExpanded,
+        variableExpanded,
+        cardExpanded,
+        debtExpanded,
+        cardRate
+    ) {
+        (if (fixedExpanded) matchedFixedExpenses.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
+            (if (variableExpanded) matchedVariableExpenses.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
+            (if (cardExpanded) matchedCardExpenses.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
+            (if (debtExpanded) matchedDebts.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0)
+    }
 
     fun toggleSection(section: ExpenseSection) {
         collapsedSections = if (collapsedSections.contains(section)) {
@@ -214,6 +558,7 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             if (!isReadOnly && selectedExpenseKeys.isEmpty()) {
                 Column(horizontalAlignment = Alignment.End) {
@@ -230,21 +575,27 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
             }
         }
     ) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+        MonthSwipeContainer(
+            canGoPrevious = canGoPreviousMonth,
+            canGoNext = canGoNextMonth,
+            onGoPrevious = onGoPreviousMonth,
+            onGoNext = onGoNextMonth,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            LazyColumn(Modifier.fillMaxSize()) {
             if (isReadOnly) item { ReadOnlyBanner() }
 
             item {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    MonthHeader(yearMonth = yearMonth)
+                    headerContent()
                     OutlinedTextField(
                         value = searchQuery,
-                        onValueChange = {
-                            searchQuery = it
-                            if (it.isNotBlank()) collapsedSections = emptySet()
-                        },
+                        onValueChange = { searchQuery = it },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text(stringResource(R.string.expenses_search_label)) },
                         singleLine = true
@@ -294,7 +645,13 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         TextButton(onClick = {
-                            collapsedSections = if (areAllCollapsed) emptySet() else allSections
+                            collapsedSections = if (hasActiveVisibilityFilter) {
+                                allSections - sectionsWithVisibleResults
+                            } else if (areAllCollapsed) {
+                                emptySet()
+                            } else {
+                                allSections
+                            }
                         }) {
                             Text(
                                 stringResource(
@@ -330,16 +687,17 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
             item {
                 SectionHeader(
                     title = stringResource(R.string.expenses_section_fixed),
-                    total = filteredFixedExpenses.sumOf { it.amountUYU }.formatUYU(),
+                    total = filteredFixedExpenses.sumOf { it.totalUYU(cardRate) }.formatUYU(),
                     expanded = fixedExpanded,
                     onClick = { toggleSection(ExpenseSection.FIXED) }
                 )
             }
             if (fixedExpanded) {
-                items(filteredFixedExpenses, key = { it.id }) { expense ->
+                items(filteredFixedExpenses, key = { it.id }, contentType = { "fixed" }) { expense ->
                     val selectionKey = "fixed:${expense.id}"
                     FixedExpenseRow(
                         expense = expense,
+                        exchangeRate = cardRate,
                         readOnly = isReadOnly,
                         selected = selectedExpenseKeys.contains(selectionKey),
                         selectionMode = selectedExpenseKeys.isNotEmpty(),
@@ -362,7 +720,7 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                 )
             }
             if (variableExpanded) {
-                items(filteredVariableExpenses, key = { it.id }) { expense ->
+                items(filteredVariableExpenses, key = { it.id }, contentType = { "variable" }) { expense ->
                     val selectionKey = "variable:${expense.id}"
                     MoneyEntryRow(
                         entry = expense,
@@ -394,7 +752,7 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                 )
             }
             if (cardExpanded) {
-                items(filteredCardExpenses, key = { it.id }) { expense ->
+                items(filteredCardExpenses, key = { it.id }, contentType = { "card" }) { expense ->
                     val selectionKey = "card:${expense.id}"
                     CardExpenseRow(
                         expense = expense,
@@ -421,7 +779,7 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                 )
             }
             if (debtExpanded) {
-                items(filteredDebts, key = { it.id }) { debt ->
+                items(filteredDebts, key = { it.id }, contentType = { "debt" }) { debt ->
                     val selectionKey = "debt:${debt.id}"
                     DebtRow(
                         debt = debt,
@@ -436,8 +794,8 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                     )
                 }
             }
-
-            item { Spacer(Modifier.height(80.dp)) }
+                item { Spacer(Modifier.height(80.dp)) }
+            }
         }
     }
 
@@ -446,7 +804,13 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
             initial = editFixed,
             categories = categories,
             onCreateCategory = viewModel::addCategory,
-            onConfirm = { expense -> viewModel.upsertFixed(expense); showAddFixed = false; editFixed = null },
+            shouldCheckDuplicates = editFixed == null,
+            findDuplicates = ::findDuplicateMatches,
+            onConfirm = { expense, applyToFuture ->
+                viewModel.upsertFixed(expense, applyToFuture)
+                showAddFixed = false
+                editFixed = null
+            },
             onDismiss = { showAddFixed = false; editFixed = null }
         )
     }
@@ -457,6 +821,8 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
             categories = categories,
             onCreateCategory = viewModel::addCategory,
             allowApplyToFuture = false,
+            shouldCheckDuplicates = editVariable == null,
+            findDuplicates = ::findDuplicateMatches,
             onConfirm = { expense, _ -> viewModel.upsertVariableExpense(expense); showAddVariable = false; editVariable = null },
             onDismiss = { showAddVariable = false; editVariable = null }
         )
@@ -466,7 +832,13 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
             initial = editCard,
             categories = categories,
             onCreateCategory = viewModel::addCategory,
-            onConfirm = { expense -> viewModel.upsertCard(expense); showAddCard = false; editCard = null },
+            shouldCheckDuplicates = editCard == null,
+            findDuplicates = ::findDuplicateMatches,
+            onConfirm = { expense, applyToFuture ->
+                viewModel.upsertCard(expense, applyToFuture)
+                showAddCard = false
+                editCard = null
+            },
             onDismiss = { showAddCard = false; editCard = null }
         )
     }
@@ -475,7 +847,13 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
             initial = editDebt,
             categories = categories,
             onCreateCategory = viewModel::addCategory,
-            onConfirm = { debt -> viewModel.upsertDebt(debt); showAddDebt = false; editDebt = null },
+            shouldCheckDuplicates = editDebt == null,
+            findDuplicates = ::findDuplicateMatches,
+            onConfirm = { debt, applyToFuture ->
+                viewModel.upsertDebt(debt, applyToFuture)
+                showAddDebt = false
+                editDebt = null
+            },
             onDismiss = { showAddDebt = false; editDebt = null }
         )
     }
@@ -546,6 +924,47 @@ private fun DeleteConfirmationDialog(
         confirmButton = {
             Button(onClick = { onConfirm(deleteFuture) }) {
                 Text(stringResource(R.string.action_delete))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun DuplicateExpenseDialog(
+    expenseName: String,
+    matches: List<DuplicateExpenseMatch>,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.expenses_duplicate_title)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(stringResource(R.string.expenses_duplicate_message, expenseName))
+                matches.forEach { match ->
+                    Text(
+                        stringResource(
+                            R.string.expenses_duplicate_item,
+                            match.typeLabel,
+                            match.amountLabel
+                        ),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text(stringResource(R.string.expenses_duplicate_confirm))
             }
         },
         dismissButton = {
@@ -661,6 +1080,7 @@ private fun paymentRowColor(
 @OptIn(ExperimentalFoundationApi::class)
 private fun FixedExpenseRow(
     expense: FixedExpense,
+    exchangeRate: Double,
     readOnly: Boolean,
     selected: Boolean,
     selectionMode: Boolean,
@@ -698,11 +1118,18 @@ private fun FixedExpenseRow(
                     Text(expense.category, style = MaterialTheme.typography.labelSmall)
                 }
                 Text(stringResource(R.string.expenses_fixed_recurring_hint), style = MaterialTheme.typography.labelSmall)
+                if (expense.isInUSD()) {
+                    Text(
+                        "${expense.amountUSD.formatUSD()} x ${"%.2f".format(exchangeRate)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
             }
         },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(expense.amountUYU.formatUYU(), fontWeight = FontWeight.Medium)
+                Text(expense.totalUYU(exchangeRate).formatUYU(), fontWeight = FontWeight.Medium)
                 if (!selectionMode) {
                     Checkbox(
                         checked = expense.isPaid,
@@ -922,12 +1349,52 @@ private fun FixedExpenseDialog(
     initial: FixedExpense?,
     categories: List<String>,
     onCreateCategory: (String) -> Unit,
-    onConfirm: (FixedExpense) -> Unit,
+    shouldCheckDuplicates: Boolean,
+    findDuplicates: (String) -> List<DuplicateExpenseMatch>,
+    onConfirm: (FixedExpense, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
     var category by remember { mutableStateOf(initial?.category ?: "") }
-    var amount by remember { mutableStateOf(initial?.amountUYU?.toInputAmount() ?: "") }
+    var isUSD by remember { mutableStateOf(initial?.isInUSD() ?: false) }
+    var applyFuture by remember { mutableStateOf(false) }
+    var duplicateMatches by remember { mutableStateOf<List<DuplicateExpenseMatch>?>(null) }
+    var amount by remember {
+        mutableStateOf(
+            when {
+                initial?.isInUSD() == true -> initial.amountUSD.toInputAmount()
+                initial != null -> initial.amountUYU.toInputAmount()
+                else -> ""
+            }
+        )
+    }
+
+    fun buildExpense(): FixedExpense {
+        val parsedAmount = amount.replace(",", ".").toDoubleOrNull() ?: 0.0
+        val resolvedCategory = category.trim()
+        if (resolvedCategory.isNotBlank()) onCreateCategory(resolvedCategory)
+        return FixedExpense(
+            id = initial?.id ?: UUID.randomUUID().toString(),
+            name = name,
+            category = resolvedCategory,
+            amountUSD = if (isUSD) parsedAmount else 0.0,
+            amountUYU = if (isUSD) 0.0 else parsedAmount,
+            isUSD = isUSD,
+            currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
+            isPinned = true,
+            isPaid = initial?.isPaid ?: false
+        )
+    }
+
+    fun saveExpense() {
+        val matches = if (shouldCheckDuplicates) findDuplicates(name) else emptyList()
+        if (matches.isNotEmpty()) {
+            duplicateMatches = matches
+            return
+        }
+        onConfirm(buildExpense(), if (initial == null) true else applyFuture)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(if (initial == null) R.string.dialog_fixed_title_new else R.string.dialog_fixed_title_edit)) },
@@ -939,28 +1406,41 @@ private fun FixedExpenseDialog(
                     onValueChange = { category = it },
                     categories = categories
                 )
-                OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text(stringResource(R.string.dialog_fixed_amount_label)) }, prefix = { Text(stringResource(R.string.prefix_uyu)) }, singleLine = true)
+                CurrencySelector(isUSD = isUSD, onChange = { isUSD = it })
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it },
+                    modifier = Modifier.clearZeroOnFocus(amount) { amount = it },
+                    label = { Text(stringResource(R.string.dialog_fixed_amount_label)) },
+                    prefix = { Text(stringResource(if (isUSD) R.string.prefix_usd else R.string.prefix_uyu)) },
+                    singleLine = true
+                )
+                if (initial != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = applyFuture, onCheckedChange = { applyFuture = it })
+                        Text(stringResource(R.string.common_apply_to_future))
+                    }
+                }
                 Text(stringResource(R.string.dialog_fixed_hint), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val resolvedCategory = category.trim()
-                if (resolvedCategory.isNotBlank()) onCreateCategory(resolvedCategory)
-                onConfirm(
-                    FixedExpense(
-                        id = initial?.id ?: UUID.randomUUID().toString(),
-                        name = name,
-                        category = resolvedCategory,
-                        amountUYU = amount.replace(",", ".").toDoubleOrNull() ?: 0.0,
-                        isPinned = true,
-                        isPaid = initial?.isPaid ?: false
-                    )
-                )
-            }) { Text(stringResource(R.string.action_save)) }
+            Button(onClick = ::saveExpense) { Text(stringResource(R.string.action_save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
     )
+
+    duplicateMatches?.let { matches ->
+        DuplicateExpenseDialog(
+            expenseName = name.ifBlank { stringResource(R.string.expenses_delete_item_fallback) },
+            matches = matches,
+            onConfirm = {
+                duplicateMatches = null
+                onConfirm(buildExpense(), if (initial == null) true else applyFuture)
+            },
+            onDismiss = { duplicateMatches = null }
+        )
+    }
 }
 
 @Composable
@@ -970,6 +1450,8 @@ private fun MoneyEntryDialog(
     categories: List<String>,
     onCreateCategory: (String) -> Unit,
     allowApplyToFuture: Boolean,
+    shouldCheckDuplicates: Boolean,
+    findDuplicates: (String) -> List<DuplicateExpenseMatch>,
     onConfirm: (MoneyEntry, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -986,6 +1468,33 @@ private fun MoneyEntryDialog(
         )
     }
     var applyFuture by remember { mutableStateOf(false) }
+    var duplicateMatches by remember { mutableStateOf<List<DuplicateExpenseMatch>?>(null) }
+
+    fun buildExpense(): MoneyEntry {
+        val parsed = amount.replace(",", ".").toDoubleOrNull() ?: 0.0
+        val resolvedCategory = category.trim()
+        if (resolvedCategory.isNotBlank()) onCreateCategory(resolvedCategory)
+        return MoneyEntry(
+            id = initial?.id ?: UUID.randomUUID().toString(),
+            name = name,
+            category = resolvedCategory,
+            amountUSD = if (isUSD) parsed else 0.0,
+            amountUYU = if (isUSD) 0.0 else parsed,
+            isUSD = isUSD,
+            currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
+            isPaid = initial?.isPaid ?: false
+        )
+    }
+
+    fun saveExpense() {
+        val matches = if (shouldCheckDuplicates) findDuplicates(name) else emptyList()
+        if (matches.isNotEmpty()) {
+            duplicateMatches = matches
+            return
+        }
+        onConfirm(buildExpense(), applyFuture)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
@@ -998,7 +1507,14 @@ private fun MoneyEntryDialog(
                     categories = categories
                 )
                 CurrencySelector(isUSD = isUSD, onChange = { isUSD = it })
-                OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text(stringResource(R.string.common_amount_label)) }, prefix = { Text(stringResource(if (isUSD) R.string.prefix_usd else R.string.prefix_uyu)) }, singleLine = true)
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it },
+                    modifier = Modifier.clearZeroOnFocus(amount) { amount = it },
+                    label = { Text(stringResource(R.string.common_amount_label)) },
+                    prefix = { Text(stringResource(if (isUSD) R.string.prefix_usd else R.string.prefix_uyu)) },
+                    singleLine = true
+                )
                 if (allowApplyToFuture) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = applyFuture, onCheckedChange = { applyFuture = it })
@@ -1008,27 +1524,22 @@ private fun MoneyEntryDialog(
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val parsed = amount.replace(",", ".").toDoubleOrNull() ?: 0.0
-                val resolvedCategory = category.trim()
-                if (resolvedCategory.isNotBlank()) onCreateCategory(resolvedCategory)
-                onConfirm(
-                    MoneyEntry(
-                        id = initial?.id ?: UUID.randomUUID().toString(),
-                        name = name,
-                        category = resolvedCategory,
-                        amountUSD = if (isUSD) parsed else 0.0,
-                        amountUYU = if (isUSD) 0.0 else parsed,
-                        isUSD = isUSD,
-                        currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
-                        isPaid = initial?.isPaid ?: false
-                    ),
-                    applyFuture
-                )
-            }) { Text(stringResource(R.string.action_save)) }
+            Button(onClick = ::saveExpense) { Text(stringResource(R.string.action_save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
     )
+
+    duplicateMatches?.let { matches ->
+        DuplicateExpenseDialog(
+            expenseName = name.ifBlank { stringResource(R.string.expenses_delete_item_fallback) },
+            matches = matches,
+            onConfirm = {
+                duplicateMatches = null
+                onConfirm(buildExpense(), applyFuture)
+            },
+            onDismiss = { duplicateMatches = null }
+        )
+    }
 }
 
 @Composable
@@ -1036,7 +1547,9 @@ private fun CardExpenseDialog(
     initial: CardExpense?,
     categories: List<String>,
     onCreateCategory: (String) -> Unit,
-    onConfirm: (CardExpense) -> Unit,
+    shouldCheckDuplicates: Boolean,
+    findDuplicates: (String) -> List<DuplicateExpenseMatch>,
+    onConfirm: (CardExpense, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
@@ -1054,11 +1567,53 @@ private fun CardExpenseDialog(
     var kind by remember { mutableStateOf(initial?.kind ?: CardExpenseKind.PUNCTUAL) }
     var totalInst by remember { mutableStateOf(initial?.totalInstallments?.toString() ?: "1") }
     var currentInst by remember { mutableStateOf(initial?.currentInstallment?.toString() ?: "1") }
+    var applyFuture by remember { mutableStateOf(false) }
+    var duplicateMatches by remember { mutableStateOf<List<DuplicateExpenseMatch>?>(null) }
+
+    fun buildExpense(): CardExpense {
+        val value = amount.replace(",", ".").toDoubleOrNull() ?: 0.0
+        val resolvedCategory = category.trim()
+        if (resolvedCategory.isNotBlank()) onCreateCategory(resolvedCategory)
+        return CardExpense(
+            id = initial?.id ?: UUID.randomUUID().toString(),
+            name = name,
+            category = resolvedCategory,
+            amountUSD = if (isUSD) value else 0.0,
+            amountUYU = if (isUSD) 0.0 else value,
+            isUSD = isUSD,
+            currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
+            kind = kind,
+            totalInstallments = if (kind == CardExpenseKind.INSTALLMENT) totalInst.toIntOrNull() ?: 1 else 1,
+            currentInstallment = if (kind == CardExpenseKind.INSTALLMENT) currentInst.toIntOrNull() ?: 1 else 1,
+            isPaid = initial?.isPaid ?: false
+        )
+    }
+
+    fun saveExpense() {
+        val matches = if (shouldCheckDuplicates) findDuplicates(name) else emptyList()
+        if (matches.isNotEmpty()) {
+            duplicateMatches = matches
+            return
+        }
+        val shouldApplyToFuture = if (initial == null) {
+            kind != CardExpenseKind.PUNCTUAL
+        } else {
+            applyFuture
+        }
+        onConfirm(buildExpense(), shouldApplyToFuture)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(if (initial == null) R.string.dialog_card_title_new else R.string.dialog_card_title_edit)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .imePadding(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.dialog_card_name_label)) }, singleLine = true)
                 CategoryInput(
                     value = category,
@@ -1066,41 +1621,56 @@ private fun CardExpenseDialog(
                     categories = categories
                 )
                 CurrencySelector(isUSD = isUSD, onChange = { isUSD = it })
-                OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text(stringResource(R.string.dialog_card_amount_label)) }, prefix = { Text(stringResource(if (isUSD) R.string.prefix_usd else R.string.prefix_uyu)) }, singleLine = true)
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it },
+                    modifier = Modifier.clearZeroOnFocus(amount) { amount = it },
+                    label = { Text(stringResource(R.string.dialog_card_amount_label)) },
+                    prefix = { Text(stringResource(if (isUSD) R.string.prefix_usd else R.string.prefix_uyu)) },
+                    singleLine = true
+                )
                 Text(stringResource(R.string.dialog_card_kind_label), style = MaterialTheme.typography.labelMedium)
                 CardKindSelector(kind = kind, onSelected = { kind = it })
                 if (kind == CardExpenseKind.INSTALLMENT) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(value = currentInst, onValueChange = { currentInst = it }, label = { Text(stringResource(R.string.dialog_card_installment_number)) }, modifier = Modifier.weight(1f), singleLine = true)
-                        OutlinedTextField(value = totalInst, onValueChange = { totalInst = it }, label = { Text(stringResource(R.string.dialog_card_installment_total)) }, modifier = Modifier.weight(1f), singleLine = true)
+                    InstallmentFields(
+                        currentValue = currentInst,
+                        onCurrentValueChange = { currentInst = it },
+                        totalValue = totalInst,
+                        onTotalValueChange = { totalInst = it },
+                        currentLabel = stringResource(R.string.dialog_card_installment_number),
+                        totalLabel = stringResource(R.string.dialog_card_installment_total)
+                    )
+                }
+                if (initial != null && (initial.kind != CardExpenseKind.PUNCTUAL || kind != CardExpenseKind.PUNCTUAL)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = applyFuture, onCheckedChange = { applyFuture = it })
+                        Text(stringResource(R.string.common_apply_to_future))
                     }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val value = amount.replace(",", ".").toDoubleOrNull() ?: 0.0
-                val resolvedCategory = category.trim()
-                if (resolvedCategory.isNotBlank()) onCreateCategory(resolvedCategory)
-                onConfirm(
-                    CardExpense(
-                        id = initial?.id ?: UUID.randomUUID().toString(),
-                        name = name,
-                        category = resolvedCategory,
-                        amountUSD = if (isUSD) value else 0.0,
-                        amountUYU = if (isUSD) 0.0 else value,
-                        isUSD = isUSD,
-                        currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
-                        kind = kind,
-                        totalInstallments = if (kind == CardExpenseKind.INSTALLMENT) totalInst.toIntOrNull() ?: 1 else 1,
-                        currentInstallment = if (kind == CardExpenseKind.INSTALLMENT) currentInst.toIntOrNull() ?: 1 else 1,
-                        isPaid = initial?.isPaid ?: false
-                    )
-                )
-            }) { Text(stringResource(R.string.action_save)) }
+            Button(onClick = ::saveExpense) { Text(stringResource(R.string.action_save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
     )
+
+    duplicateMatches?.let { matches ->
+        DuplicateExpenseDialog(
+            expenseName = name.ifBlank { stringResource(R.string.expenses_delete_item_fallback) },
+            matches = matches,
+            onConfirm = {
+                duplicateMatches = null
+                val shouldApplyToFuture = if (initial == null) {
+                    kind != CardExpenseKind.PUNCTUAL
+                } else {
+                    applyFuture
+                }
+                onConfirm(buildExpense(), shouldApplyToFuture)
+            },
+            onDismiss = { duplicateMatches = null }
+        )
+    }
 }
 
 @Composable
@@ -1125,7 +1695,9 @@ private fun DebtDialog(
     initial: DebtEntry?,
     categories: List<String>,
     onCreateCategory: (String) -> Unit,
-    onConfirm: (DebtEntry) -> Unit,
+    shouldCheckDuplicates: Boolean,
+    findDuplicates: (String) -> List<DuplicateExpenseMatch>,
+    onConfirm: (DebtEntry, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
@@ -1142,11 +1714,47 @@ private fun DebtDialog(
     }
     var totalInst by remember { mutableStateOf(initial?.totalInstallments?.toString() ?: "1") }
     var currentInst by remember { mutableStateOf(initial?.currentInstallment?.toString() ?: "1") }
+    var applyFuture by remember { mutableStateOf(false) }
+    var duplicateMatches by remember { mutableStateOf<List<DuplicateExpenseMatch>?>(null) }
+
+    fun buildDebt(): DebtEntry {
+        val value = amount.replace(",", ".").toDoubleOrNull() ?: 0.0
+        val resolvedCategory = category.trim()
+        if (resolvedCategory.isNotBlank()) onCreateCategory(resolvedCategory)
+        return DebtEntry(
+            id = initial?.id ?: UUID.randomUUID().toString(),
+            name = name,
+            category = resolvedCategory,
+            amountUSD = if (isUSD) value else 0.0,
+            amountUYU = if (isUSD) 0.0 else value,
+            isUSD = isUSD,
+            currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
+            totalInstallments = totalInst.toIntOrNull() ?: 1,
+            currentInstallment = currentInst.toIntOrNull() ?: 1,
+            isPaid = initial?.isPaid ?: false
+        )
+    }
+
+    fun saveDebt() {
+        val matches = if (shouldCheckDuplicates) findDuplicates(name) else emptyList()
+        if (matches.isNotEmpty()) {
+            duplicateMatches = matches
+            return
+        }
+        onConfirm(buildDebt(), if (initial == null) true else applyFuture)
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(if (initial == null) R.string.dialog_debt_title_new else R.string.dialog_debt_title_edit)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .imePadding(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.dialog_debt_name_label)) }, singleLine = true)
                 CategoryInput(
                     value = category,
@@ -1154,36 +1762,100 @@ private fun DebtDialog(
                     categories = categories
                 )
                 CurrencySelector(isUSD = isUSD, onChange = { isUSD = it })
-                OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text(stringResource(R.string.dialog_debt_amount_label)) }, prefix = { Text(stringResource(if (isUSD) R.string.prefix_usd else R.string.prefix_uyu)) }, singleLine = true)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = currentInst, onValueChange = { currentInst = it }, label = { Text(stringResource(R.string.dialog_debt_installment_number)) }, modifier = Modifier.weight(1f), singleLine = true)
-                    OutlinedTextField(value = totalInst, onValueChange = { totalInst = it }, label = { Text(stringResource(R.string.dialog_debt_installment_total)) }, modifier = Modifier.weight(1f), singleLine = true)
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it },
+                    modifier = Modifier.clearZeroOnFocus(amount) { amount = it },
+                    label = { Text(stringResource(R.string.dialog_debt_amount_label)) },
+                    prefix = { Text(stringResource(if (isUSD) R.string.prefix_usd else R.string.prefix_uyu)) },
+                    singleLine = true
+                )
+                InstallmentFields(
+                    currentValue = currentInst,
+                    onCurrentValueChange = { currentInst = it },
+                    totalValue = totalInst,
+                    onTotalValueChange = { totalInst = it },
+                    currentLabel = stringResource(R.string.dialog_debt_installment_number),
+                    totalLabel = stringResource(R.string.dialog_debt_installment_total)
+                )
+                if (initial != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = applyFuture, onCheckedChange = { applyFuture = it })
+                        Text(stringResource(R.string.common_apply_to_future))
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val value = amount.replace(",", ".").toDoubleOrNull() ?: 0.0
-                val resolvedCategory = category.trim()
-                if (resolvedCategory.isNotBlank()) onCreateCategory(resolvedCategory)
-                onConfirm(
-                    DebtEntry(
-                        id = initial?.id ?: UUID.randomUUID().toString(),
-                        name = name,
-                        category = resolvedCategory,
-                        amountUSD = if (isUSD) value else 0.0,
-                        amountUYU = if (isUSD) 0.0 else value,
-                        isUSD = isUSD,
-                        currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
-                        totalInstallments = totalInst.toIntOrNull() ?: 1,
-                        currentInstallment = currentInst.toIntOrNull() ?: 1,
-                        isPaid = initial?.isPaid ?: false
-                    )
-                )
-            }) { Text(stringResource(R.string.action_save)) }
+            Button(onClick = ::saveDebt) { Text(stringResource(R.string.action_save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
     )
+
+    duplicateMatches?.let { matches ->
+        DuplicateExpenseDialog(
+            expenseName = name.ifBlank { stringResource(R.string.expenses_delete_item_fallback) },
+            matches = matches,
+            onConfirm = {
+                duplicateMatches = null
+                onConfirm(buildDebt(), if (initial == null) true else applyFuture)
+            },
+            onDismiss = { duplicateMatches = null }
+        )
+    }
+}
+
+@Composable
+private fun InstallmentFields(
+    currentValue: String,
+    onCurrentValueChange: (String) -> Unit,
+    totalValue: String,
+    onTotalValueChange: (String) -> Unit,
+    currentLabel: String,
+    totalLabel: String
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val useVerticalLayout = maxWidth < 360.dp
+        if (useVerticalLayout) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = currentValue,
+                    onValueChange = { onCurrentValueChange(it.filter(Char::isDigit)) },
+                    label = { Text(currentLabel) },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = totalValue,
+                    onValueChange = { onTotalValueChange(it.filter(Char::isDigit)) },
+                    label = { Text(totalLabel) },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = currentValue,
+                    onValueChange = { onCurrentValueChange(it.filter(Char::isDigit)) },
+                    label = { Text(currentLabel) },
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = totalValue,
+                    onValueChange = { onTotalValueChange(it.filter(Char::isDigit)) },
+                    label = { Text(totalLabel) },
+                    modifier = Modifier.weight(1f),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -1192,7 +1864,7 @@ private fun CategoryInput(
     onValueChange: (String) -> Unit,
     categories: List<String>
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var showCategoryPicker by remember { mutableStateOf(false) }
     var useCustomCategory by remember(value) {
         mutableStateOf(value.isNotBlank() && categories.none { it.equals(value, ignoreCase = true) })
     }
@@ -1221,7 +1893,7 @@ private fun CategoryInput(
                     )
                 },
                 trailingIcon = {
-                    IconButton(onClick = { expanded = true }) {
+                    IconButton(onClick = { showCategoryPicker = true }) {
                         Icon(Icons.Default.ArrowDropDown, contentDescription = stringResource(R.string.common_category_open))
                     }
                 },
@@ -1230,30 +1902,8 @@ private fun CategoryInput(
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .clickable { expanded = true }
+                    .clickable { showCategoryPicker = true }
             )
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                modifier = Modifier.fillMaxWidth(0.92f)
-            ) {
-                categories.forEach { category ->
-                    DropdownMenuItem(
-                        text = { Text(category) },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = categoryIconFor(category),
-                                contentDescription = null
-                            )
-                        },
-                        onClick = {
-                            onValueChange(category)
-                            useCustomCategory = false
-                            expanded = false
-                        }
-                    )
-                }
-            }
         }
         TextButton(onClick = { useCustomCategory = !useCustomCategory }) {
             Text(
@@ -1278,6 +1928,42 @@ private fun CategoryInput(
                 singleLine = true
             )
         }
+    }
+    if (showCategoryPicker && !useCustomCategory) {
+        AlertDialog(
+            onDismissRequest = { showCategoryPicker = false },
+            title = { Text(stringResource(R.string.common_category_label)) },
+            text = {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                ) {
+                    items(categories, key = { it }) { category ->
+                        DropdownMenuItem(
+                            text = { Text(category) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = categoryIconFor(category),
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                onValueChange(category)
+                                useCustomCategory = false
+                                showCategoryPicker = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showCategoryPicker = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
     }
 }
 

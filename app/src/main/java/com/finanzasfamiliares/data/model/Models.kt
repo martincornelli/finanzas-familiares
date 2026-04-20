@@ -86,7 +86,7 @@ data class MonthData(
 
     @Exclude
     fun donationsInUYU(currency: String): Double =
-        donations.sumOf { it.totalUYU(totalIncomeInUYU(currency), cardExchangeRate) }
+        donations.sumOf { it.totalUYU(primaryIncomeInUYU(currency), cardExchangeRate) }
 
     @Exclude
     fun totalIncomeInUYU(currency: String): Double = primaryIncomeInUYU(currency) + variableIncomeUYU
@@ -94,7 +94,7 @@ data class MonthData(
     @Exclude
     fun totalObligationsInUYU(currency: String): Double =
         donationsInUYU(currency) +
-        fixedExpenses.sumOf { it.amountUYU } +
+        fixedExpenses.sumOf { it.totalUYU(cardExchangeRate) } +
         variableExpenses.sumOf { it.totalUYU(cardExchangeRate) } +
         cardExpenses.sumOf { it.totalUYU(cardExchangeRate) } +
         debts.sumOf { it.totalUYU(cardExchangeRate) }
@@ -164,8 +164,8 @@ data class Donation(
     fun isInUSD(): Boolean = currencyCode() == IncomeCurrency.USD
 
     @Exclude
-    fun totalUYU(totalIncomeUYU: Double, exchangeRate: Double): Double =
-        percentOfPrimaryIncome?.let { totalIncomeUYU * (it / 100.0) }
+    fun totalUYU(primaryIncomeUYU: Double, exchangeRate: Double): Double =
+        percentOfPrimaryIncome?.let { primaryIncomeUYU * (it / 100.0) }
             ?: if (isInUSD()) amountUSD * exchangeRate else amountUYU
 
     @Exclude
@@ -183,14 +183,34 @@ data class FixedExpense(
     val id: String = "",
     val name: String = "",
     val category: String = "",
+    val amountUSD: Double = 0.0,
     val amountUYU: Double = 0.0,
+    @get:PropertyName("usd")
+    @field:PropertyName("usd")
+    val isUSD: Boolean = false,
+    val currency: String = "",
     @get:PropertyName("pinned")
     @field:PropertyName("pinned")
     val isPinned: Boolean = true,
     @get:PropertyName("paid")
     @field:PropertyName("paid")
     val isPaid: Boolean = false
-)
+) {
+    @Exclude
+    fun currencyCode(): String = when {
+        currency == IncomeCurrency.USD || currency == IncomeCurrency.UYU -> currency
+        isUSD -> IncomeCurrency.USD
+        amountUSD != 0.0 && amountUYU == 0.0 -> IncomeCurrency.USD
+        else -> IncomeCurrency.UYU
+    }
+
+    @Exclude
+    fun isInUSD(): Boolean = currencyCode() == IncomeCurrency.USD
+
+    @Exclude
+    fun totalUYU(exchangeRate: Double): Double =
+        if (isInUSD()) amountUSD * exchangeRate else amountUYU
+}
 
 @IgnoreExtraProperties
 data class CardExpense(

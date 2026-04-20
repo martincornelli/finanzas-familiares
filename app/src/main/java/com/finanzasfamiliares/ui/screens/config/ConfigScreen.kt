@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.finanzasfamiliares.R
 import com.finanzasfamiliares.data.model.IncomeCurrency
+import com.finanzasfamiliares.ui.components.clearZeroOnFocus
 import com.finanzasfamiliares.ui.components.toInputAmount
 import com.finanzasfamiliares.ui.theme.Green700
 import com.finanzasfamiliares.ui.theme.Yellow700
@@ -257,7 +258,7 @@ private fun ValidatedOutlinedTextField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier,
+        modifier = modifier.clearZeroOnFocus(value, onValueChange),
         label = { Text(label) },
         prefix = prefix?.let { { Text(it) } },
         supportingText = supportingText?.let { { Text(it) } },

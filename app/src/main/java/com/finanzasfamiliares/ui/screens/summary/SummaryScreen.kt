@@ -1,12 +1,5 @@
 package com.finanzasfamiliares.ui.screens.summary
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -22,22 +15,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,7 +44,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,7 +52,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.finanzasfamiliares.R
 import com.finanzasfamiliares.data.model.IncomeCurrency
 import com.finanzasfamiliares.data.model.MoneyEntry
+import com.finanzasfamiliares.ui.components.MonthNavigationHeader
+import com.finanzasfamiliares.ui.components.MonthSwipeContainer
 import com.finanzasfamiliares.ui.components.SummaryRow
+import com.finanzasfamiliares.ui.components.clearZeroOnFocus
 import com.finanzasfamiliares.ui.components.formatUSD
 import com.finanzasfamiliares.ui.components.formatUYU
 import com.finanzasfamiliares.ui.components.toInputAmount
@@ -79,17 +68,25 @@ import java.util.UUID
 
 @Composable
 fun SummaryScreen(
-    onYearMonthChange: (String) -> Unit = {},
+    yearMonth: String,
+    monthLabel: String,
+    availableMonths: List<YearMonth>,
+    canGoPreviousMonth: Boolean,
+    canGoNextMonth: Boolean,
+    isCurrentMonthSelected: Boolean,
+    isGeneratingMonths: Boolean,
+    onGoPreviousMonth: () -> Unit,
+    onGoNextMonth: () -> Unit,
+    onGoToMonth: (YearMonth) -> Unit,
+    onGoToCurrentMonth: () -> Unit,
+    onGenerateMonths: (Int) -> Unit,
     viewModel: SummaryViewModel = hiltViewModel()
 ) {
-    val label by viewModel.monthLabel.collectAsState()
+    LaunchedEffect(yearMonth) { viewModel.setYearMonth(yearMonth) }
     val data by viewModel.monthData.collectAsState()
-    val isCurrentMonth by viewModel.isCurrentMonth.collectAsState()
     val isFutureMonth by viewModel.isFutureMonth.collectAsState()
-    val isGenerating by viewModel.isGenerating.collectAsState()
     val currentYMString by viewModel.currentYMString.collectAsState()
     val config by viewModel.currentConfig.collectAsState()
-    val availableMonths by viewModel.availableMonths.collectAsState()
     val incomeCurrency = config.incomeCurrency
     val primaryIncomeAmount = data?.primaryIncomeAmount(incomeCurrency) ?: 0.0
     val primaryIncomeUYU = data?.primaryIncomeInUYU(incomeCurrency) ?: 0.0
@@ -100,109 +97,38 @@ fun SummaryScreen(
     var showIncomeDialog by remember { mutableStateOf(false) }
     var showRateDialog by remember { mutableStateOf(false) }
     var showVariableIncomeDialog by remember { mutableStateOf(false) }
-    var showGenerateDialog by remember { mutableStateOf(false) }
-    var showMonthPickerDialog by remember { mutableStateOf(false) }
     var editingVariableIncome by remember { mutableStateOf<MoneyEntry?>(null) }
     var deletingVariableIncome by remember { mutableStateOf<MoneyEntry?>(null) }
     var variableIncomeExpanded by remember(currentYMString) { mutableStateOf(false) }
-    var navigationDirection by remember { mutableStateOf(1) }
     val monthFormatter = remember { DateTimeFormatter.ofPattern("yyyy-MM") }
-    val selectedYearMonth = remember(currentYMString) { YearMonth.parse(currentYMString, monthFormatter) }
-    LaunchedEffect(currentYMString) {
-        onYearMonthChange(currentYMString)
-    }
-    val goPrevious = {
-        navigationDirection = -1
-        viewModel.goToPreviousMonth()
-    }
-    val goNext = {
-        navigationDirection = 1
-        viewModel.goToNextMonth()
-    }
+    val selectedYearMonth = remember(yearMonth, monthFormatter) { YearMonth.parse(yearMonth, monthFormatter) }
 
-    Box(
-        Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                var accumulatedDrag = 0f
-                detectHorizontalDragGestures(
-                    onHorizontalDrag = { change, dragAmount ->
-                        accumulatedDrag += dragAmount
-                        change.consume()
-                    },
-                    onDragEnd = {
-                        when {
-                            accumulatedDrag > 80f -> goPrevious()
-                            accumulatedDrag < -80f -> goNext()
-                        }
-                        accumulatedDrag = 0f
-                    },
-                    onDragCancel = { accumulatedDrag = 0f }
-                )
-            }
+    MonthSwipeContainer(
+        canGoPrevious = canGoPreviousMonth,
+        canGoNext = canGoNextMonth,
+        onGoPrevious = onGoPreviousMonth,
+        onGoNext = onGoNextMonth,
+        modifier = Modifier.fillMaxSize()
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 80.dp)
         ) {
         item {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = goPrevious) {
-                    Icon(Icons.Default.ChevronLeft, contentDescription = stringResource(R.string.summary_prev_month_cd))
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    TextButton(onClick = { showMonthPickerDialog = true }) {
-                        AnimatedContent(
-                            targetState = label,
-                            transitionSpec = {
-                                val incomingOffset = { width: Int ->
-                                    if (navigationDirection >= 0) width / 3 else -width / 3
-                                }
-                                val outgoingOffset = { width: Int ->
-                                    if (navigationDirection >= 0) -width / 3 else width / 3
-                                }
-                                (slideInHorizontally(initialOffsetX = incomingOffset) + fadeIn())
-                                    .togetherWith(slideOutHorizontally(targetOffsetX = outgoingOffset) + fadeOut())
-                                    .using(SizeTransform(clip = false))
-                            },
-                            label = "summary_month_label"
-                        ) { targetLabel ->
-                            Text(
-                                text = targetLabel,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                    if (!isCurrentMonth) {
-                        FilterChip(
-                            selected = true,
-                            onClick = {
-                                navigationDirection = if (selectedYearMonth <= YearMonth.now()) 1 else -1
-                                viewModel.goToMonth(YearMonth.now())
-                            },
-                            label = { Text(stringResource(R.string.summary_go_to_current_month)) },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Today,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(FilterChipDefaults.IconSize)
-                                )
-                            }
-                        )
-                    }
-                    TextButton(onClick = { showGenerateDialog = true }) {
-                        Text(stringResource(R.string.summary_generate_months))
-                    }
-                }
-                IconButton(onClick = goNext) {
-                    Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.summary_next_month_cd))
-                }
-            }
+            MonthNavigationHeader(
+                currentMonth = selectedYearMonth,
+                monthLabel = monthLabel,
+                availableMonths = availableMonths,
+                canGoPrevious = canGoPreviousMonth,
+                canGoNext = canGoNextMonth,
+                isCurrentMonth = isCurrentMonthSelected,
+                isGenerating = isGeneratingMonths,
+                onGoPrevious = onGoPreviousMonth,
+                onGoNext = onGoNextMonth,
+                onGoToMonth = onGoToMonth,
+                onGoToCurrentMonth = onGoToCurrentMonth,
+                onGenerateMonths = onGenerateMonths
+            )
 
             val colors = marginColors(
                 amount = margin,
@@ -291,7 +217,7 @@ fun SummaryScreen(
             HorizontalDivider()
 
             SummaryRow(stringResource(R.string.summary_donations), donationsUYU.formatUYU())
-            SummaryRow(stringResource(R.string.summary_fixed_expenses), (data?.fixedExpenses?.sumOf { it.amountUYU } ?: 0.0).formatUYU())
+            SummaryRow(stringResource(R.string.summary_fixed_expenses), (data?.fixedExpenses?.sumOf { it.totalUYU(data?.cardExchangeRate ?: 0.0) } ?: 0.0).formatUYU())
             SummaryRow(stringResource(R.string.summary_variable_expenses), (data?.variableExpenses?.sumOf { it.totalUYU(data?.cardExchangeRate ?: 0.0) } ?: 0.0).formatUYU())
             SummaryRow(stringResource(R.string.summary_credit_card), (data?.cardExpenses?.sumOf { it.totalUYU(data?.cardExchangeRate ?: 0.0) } ?: 0.0).formatUYU())
             SummaryRow(stringResource(R.string.summary_debts), (data?.debts?.sumOf { it.totalUYU(data?.cardExchangeRate ?: 0.0) } ?: 0.0).formatUYU())
@@ -341,30 +267,6 @@ fun SummaryScreen(
                 editingVariableIncome = null
             }
         )
-    }
-    if (showGenerateDialog) {
-        GenerateMonthsDialog(
-            onConfirm = {
-                viewModel.generateFutureMonths(it)
-                showGenerateDialog = false
-            },
-            onDismiss = { showGenerateDialog = false }
-        )
-    }
-    if (showMonthPickerDialog) {
-        MonthPickerDialog(
-            initialMonth = selectedYearMonth,
-            availableMonths = availableMonths,
-            onConfirm = {
-                navigationDirection = if (it >= selectedYearMonth) 1 else -1
-                viewModel.goToMonth(it)
-                showMonthPickerDialog = false
-            },
-            onDismiss = { showMonthPickerDialog = false }
-        )
-    }
-    if (isGenerating) {
-        LoadingDialog(stringResource(R.string.summary_generating_months))
     }
     deletingVariableIncome?.let { income ->
         AlertDialog(
@@ -447,6 +349,7 @@ private fun MoneyEntryDialog(title: String, initial: MoneyEntry?, onConfirm: (Mo
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { amount = it },
+                    modifier = Modifier.clearZeroOnFocus(amount) { amount = it },
                     label = { Text(stringResource(R.string.common_amount_label)) },
                     prefix = { Text(stringResource(if (isUSD) R.string.prefix_usd else R.string.prefix_uyu)) },
                     singleLine = true
@@ -492,6 +395,7 @@ private fun PrimaryIncomeDialog(
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { amount = it },
+                    modifier = Modifier.clearZeroOnFocus(amount) { amount = it },
                     label = {
                         Text(
                             stringResource(
@@ -514,118 +418,6 @@ private fun PrimaryIncomeDialog(
         confirmButton = {
             Button(onClick = { onConfirm(amount.replace(",", ".").toDoubleOrNull() ?: 0.0, applyToFuture) }) {
                 Text(stringResource(R.string.action_save))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
-    )
-}
-
-@Composable
-private fun GenerateMonthsDialog(onConfirm: (Int) -> Unit, onDismiss: () -> Unit) {
-    var months by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.summary_generate_months)) },
-        text = {
-            OutlinedTextField(
-                value = months,
-                onValueChange = { months = it.filter(Char::isDigit) },
-                label = { Text(stringResource(R.string.summary_generate_months_label)) },
-                singleLine = true
-            )
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(months.toIntOrNull() ?: 0) }) {
-                Text(stringResource(R.string.action_save))
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
-    )
-}
-
-@Composable
-@OptIn(ExperimentalLayoutApi::class)
-private fun MonthPickerDialog(
-    initialMonth: YearMonth,
-    availableMonths: List<YearMonth>,
-    onConfirm: (YearMonth) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val currentMonth = remember { YearMonth.now() }
-    val monthOptions = remember(availableMonths, initialMonth) {
-        availableMonths.ifEmpty { listOf(initialMonth) }.sorted()
-    }
-    val monthsByYear = remember(monthOptions) { monthOptions.groupBy { it.year } }
-    var selectedMonth by remember(initialMonth, monthOptions) {
-        mutableStateOf(
-            monthOptions.firstOrNull { it == initialMonth }
-                ?: monthOptions.lastOrNull()
-                ?: initialMonth
-        )
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.summary_pick_month_title)) },
-        text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.verticalScroll(rememberScrollState())
-            ) {
-                if (monthOptions.isEmpty()) {
-                    Text(stringResource(R.string.summary_pick_month_empty))
-                } else {
-                    monthOptions.firstOrNull { it == currentMonth }?.let {
-                        TextButton(
-                            onClick = { selectedMonth = currentMonth },
-                            modifier = Modifier.align(Alignment.End)
-                        ) {
-                            Text(stringResource(R.string.summary_go_to_current_month))
-                        }
-                    }
-                    monthsByYear.forEach { (year, months) ->
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(
-                                text = year.toString(),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                months.sorted().forEach { month ->
-                                    FilterChip(
-                                        selected = selectedMonth == month,
-                                        onClick = { selectedMonth = month },
-                                        label = {
-                                            Text(
-                                                month.month
-                                                    .getDisplayName(TextStyle.SHORT, Locale("es", "UY"))
-                                                    .replaceFirstChar { it.uppercase() }
-                                            )
-                                        },
-                                        leadingIcon = if (month == currentMonth) {
-                                            {
-                                                Icon(
-                                                    Icons.Default.Today,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(FilterChipDefaults.IconSize)
-                                                )
-                                            }
-                                        } else null
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(selectedMonth) }) {
-                Text(stringResource(R.string.action_go))
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
@@ -658,6 +450,7 @@ private fun ExchangeSettingsDialog(
                 OutlinedTextField(
                     value = purchaseValue,
                     onValueChange = { purchaseValue = it },
+                    modifier = Modifier.clearZeroOnFocus(purchaseValue) { purchaseValue = it },
                     label = { Text(purchaseLabel) },
                     prefix = { Text(stringResource(R.string.prefix_uyu)) },
                     singleLine = true
@@ -665,6 +458,7 @@ private fun ExchangeSettingsDialog(
                 OutlinedTextField(
                     value = saleValue,
                     onValueChange = { saleValue = it },
+                    modifier = Modifier.clearZeroOnFocus(saleValue) { saleValue = it },
                     label = { Text(saleLabel) },
                     prefix = { Text(stringResource(R.string.prefix_uyu)) },
                     singleLine = true
@@ -698,19 +492,4 @@ private fun CurrencySelector(isUSD: Boolean, onChange: (Boolean) -> Unit) {
         FilterChip(selected = !isUSD, onClick = { onChange(false) }, label = { Text(stringResource(R.string.common_currency_uyu_short)) })
         FilterChip(selected = isUSD, onClick = { onChange(true) }, label = { Text(stringResource(R.string.common_currency_usd_short)) })
     }
-}
-
-@Composable
-private fun LoadingDialog(message: String) {
-    AlertDialog(
-        onDismissRequest = {},
-        confirmButton = {},
-        title = { Text(message) },
-        text = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 3.dp)
-                Text(stringResource(R.string.summary_generating_months_hint))
-            }
-        }
-    )
 }

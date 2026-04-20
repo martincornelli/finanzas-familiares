@@ -34,7 +34,15 @@ private sealed interface SavingDeleteRequest {
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
-fun SavingsScreen(yearMonth: String, viewModel: SavingsViewModel = hiltViewModel()) {
+fun SavingsScreen(
+    yearMonth: String,
+    canGoPreviousMonth: Boolean = false,
+    canGoNextMonth: Boolean = false,
+    onGoPreviousMonth: () -> Unit = {},
+    onGoNextMonth: () -> Unit = {},
+    headerContent: @Composable () -> Unit = {},
+    viewModel: SavingsViewModel = hiltViewModel()
+) {
     LaunchedEffect(yearMonth) { viewModel.setYearMonth(yearMonth) }
     val savings by viewModel.savings.collectAsState()
     val totalUYU by viewModel.totalUYU.collectAsState()
@@ -54,6 +62,7 @@ fun SavingsScreen(yearMonth: String, viewModel: SavingsViewModel = hiltViewModel
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             if (selectedSavingIds.isEmpty()) {
                 FloatingActionButton(onClick = { showAddSaving = true }) {
@@ -62,22 +71,29 @@ fun SavingsScreen(yearMonth: String, viewModel: SavingsViewModel = hiltViewModel
             }
         }
     ) { padding ->
-        LazyColumn(
+        MonthSwipeContainer(
+            canGoPrevious = canGoPreviousMonth,
+            canGoNext = canGoNextMonth,
+            onGoPrevious = onGoPreviousMonth,
+            onGoNext = onGoNextMonth,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(padding)
         ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
             item {
-                MonthHeader(yearMonth = yearMonth)
-                Spacer(Modifier.height(12.dp))
+                headerContent()
+                Spacer(Modifier.height(6.dp))
                 Text(
                     stringResource(R.string.savings_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(12.dp))
             }
 
             if (selectedSavingIds.isNotEmpty()) {
@@ -158,13 +174,14 @@ fun SavingsScreen(yearMonth: String, viewModel: SavingsViewModel = hiltViewModel
                 }
             }
 
-            item {
-                Spacer(Modifier.height(12.dp))
-                HorizontalDivider()
-                Spacer(Modifier.height(8.dp))
-                SummaryRow(stringResource(R.string.savings_total_label_uyu), totalUYU.formatUYU())
-                SummaryRow(stringResource(R.string.savings_total_label_usd), totalUSD.formatUSD())
-                Spacer(Modifier.height(64.dp))
+                item {
+                    Spacer(Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(8.dp))
+                    SummaryRow(stringResource(R.string.savings_total_label_uyu), totalUYU.formatUYU())
+                    SummaryRow(stringResource(R.string.savings_total_label_usd), totalUSD.formatUSD())
+                    Spacer(Modifier.height(64.dp))
+                }
             }
         }
     }
@@ -326,6 +343,7 @@ private fun SavingDialog(
                 OutlinedTextField(
                     value = amount,
                     onValueChange = { amount = it },
+                    modifier = Modifier.clearZeroOnFocus(amount) { amount = it },
                     label = {
                         Text(
                             stringResource(

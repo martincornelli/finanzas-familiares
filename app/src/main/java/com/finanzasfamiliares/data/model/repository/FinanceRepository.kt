@@ -235,7 +235,11 @@ class FinanceRepository @Inject constructor(
         return nextMonth
     }
 
-    suspend fun upsertFixedExpense(yearMonth: String, expense: FixedExpense) {
+    suspend fun upsertFixedExpense(
+        yearMonth: String,
+        expense: FixedExpense,
+        applyToFuture: Boolean = true
+    ) {
         val month = ensureMonthDocument(yearMonth)
         val updated = month.fixedExpenses.toMutableList()
         val idx = updated.indexOfFirst { it.id == expense.id }
@@ -250,7 +254,9 @@ class FinanceRepository @Inject constructor(
             updated.add(savedExpense)
         }
         saveMonth(month.copy(fixedExpenses = updated))
-        applyFixedExpenseToFuture(yearMonth, savedExpense)
+        if (applyToFuture) {
+            applyFixedExpenseToFuture(yearMonth, savedExpense)
+        }
     }
 
     suspend fun deleteFixedExpense(yearMonth: String, id: String, deleteFuture: Boolean = false) {

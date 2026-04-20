@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.finanzasfamiliares.R
 import com.finanzasfamiliares.data.model.MonthData
-import com.finanzasfamiliares.ui.components.MonthHeader
+import com.finanzasfamiliares.ui.components.MonthSwipeContainer
 import com.finanzasfamiliares.ui.components.SummaryRow
 import com.finanzasfamiliares.ui.components.formatUYU
 import kotlin.math.abs
@@ -45,7 +45,15 @@ private data class ChartItem(
 )
 
 @Composable
-fun AnalysisScreen(yearMonth: String, viewModel: AnalysisViewModel = hiltViewModel()) {
+fun AnalysisScreen(
+    yearMonth: String,
+    canGoPreviousMonth: Boolean = false,
+    canGoNextMonth: Boolean = false,
+    onGoPreviousMonth: () -> Unit = {},
+    onGoNextMonth: () -> Unit = {},
+    headerContent: @Composable () -> Unit = {},
+    viewModel: AnalysisViewModel = hiltViewModel()
+) {
     LaunchedEffect(yearMonth) { viewModel.setYearMonth(yearMonth) }
 
     val config by viewModel.currentConfig.collectAsState()
@@ -82,13 +90,20 @@ fun AnalysisScreen(yearMonth: String, viewModel: AnalysisViewModel = hiltViewMod
         stringResource(R.string.analysis_margin_metric) to (currentMargin to previousMargin)
     )
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    MonthSwipeContainer(
+        canGoPrevious = canGoPreviousMonth,
+        canGoNext = canGoNextMonth,
+        onGoPrevious = onGoPreviousMonth,
+        onGoNext = onGoNextMonth,
+        modifier = Modifier.fillMaxSize()
     ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         item {
-            MonthHeader(yearMonth = yearMonth)
+            headerContent()
             Text(
                 text = stringResource(R.string.analysis_title),
                 style = MaterialTheme.typography.titleLarge,
@@ -142,6 +157,7 @@ fun AnalysisScreen(yearMonth: String, viewModel: AnalysisViewModel = hiltViewMod
                 }
             }
         }
+    }
     }
 }
 
@@ -290,7 +306,7 @@ private fun buildTypeItems(
     val cardRate = data.cardExchangeRate
     return listOf(
         ChartItem(donationsLabel, data.donationsInUYU(incomeCurrency), Color(0xFF2E7D32)),
-        ChartItem(fixedLabel, data.fixedExpenses.sumOf { it.amountUYU }, Color(0xFF1565C0)),
+        ChartItem(fixedLabel, data.fixedExpenses.sumOf { it.totalUYU(cardRate) }, Color(0xFF1565C0)),
         ChartItem(variableLabel, data.variableExpenses.sumOf { it.totalUYU(cardRate) }, Color(0xFF6A1B9A)),
         ChartItem(cardLabel, data.cardExpenses.sumOf { it.totalUYU(cardRate) }, Color(0xFFEF6C00)),
         ChartItem(debtLabel, data.debts.sumOf { it.totalUYU(cardRate) }, Color(0xFFC62828))
@@ -307,7 +323,7 @@ private fun buildCategoryItems(data: MonthData?, uncategorizedLabel: String): Li
         totalsByCategory[key] = (totalsByCategory[key] ?: 0.0) + amount
     }
 
-    data.fixedExpenses.forEach { add(it.category, it.amountUYU) }
+    data.fixedExpenses.forEach { add(it.category, it.totalUYU(data.cardExchangeRate)) }
     data.variableExpenses.forEach { add(it.category, it.totalUYU(data.cardExchangeRate)) }
     data.cardExpenses.forEach { add(it.category, it.totalUYU(data.cardExchangeRate)) }
     data.debts.forEach { add(it.category, it.totalUYU(data.cardExchangeRate)) }

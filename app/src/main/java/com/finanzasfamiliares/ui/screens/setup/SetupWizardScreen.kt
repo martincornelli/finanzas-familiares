@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.finanzasfamiliares.R
 import com.finanzasfamiliares.data.model.IncomeCurrency
+import com.finanzasfamiliares.ui.components.clearZeroOnFocus
 
 @Composable
 fun SetupWizardScreen(viewModel: SetupWizardViewModel = hiltViewModel()) {
@@ -331,7 +332,9 @@ private fun WizardAmountField(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clearZeroOnFocus(value, onValueChange),
         label = { Text(label) },
         prefix = { Text(prefix) },
         singleLine = true,

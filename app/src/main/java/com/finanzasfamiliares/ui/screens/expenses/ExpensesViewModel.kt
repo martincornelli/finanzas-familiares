@@ -41,8 +41,8 @@ class ExpensesViewModel @Inject constructor(private val repo: FinanceRepository)
         repo.addExpenseCategory(category)
     }
 
-    fun upsertFixed(expense: FixedExpense) = viewModelScope.launch {
-        repo.upsertFixedExpense(_yearMonth.value, expense)
+    fun upsertFixed(expense: FixedExpense, applyToFuture: Boolean = true) = viewModelScope.launch {
+        repo.upsertFixedExpense(_yearMonth.value, expense, applyToFuture)
     }
     fun deleteFixed(id: String, deleteFuture: Boolean = false) = viewModelScope.launch {
         repo.deleteFixedExpense(_yearMonth.value, id, deleteFuture)
@@ -52,8 +52,8 @@ class ExpensesViewModel @Inject constructor(private val repo: FinanceRepository)
         repo.updateFixedExpensePaid(_yearMonth.value, id, isPaid)
     }
 
-    fun upsertCard(expense: CardExpense) = viewModelScope.launch {
-        repo.upsertCardExpense(_yearMonth.value, expense, applyToFuture = true)
+    fun upsertCard(expense: CardExpense, applyToFuture: Boolean = true) = viewModelScope.launch {
+        repo.upsertCardExpense(_yearMonth.value, expense, applyToFuture = applyToFuture)
     }
     fun deleteCard(id: String, deleteFuture: Boolean = false) = viewModelScope.launch {
         repo.deleteCardExpense(_yearMonth.value, id, deleteFuture)
@@ -79,8 +79,8 @@ class ExpensesViewModel @Inject constructor(private val repo: FinanceRepository)
         repo.updateVariableExpensePaid(_yearMonth.value, id, isPaid)
     }
 
-    fun upsertDebt(debt: DebtEntry) = viewModelScope.launch {
-        repo.upsertDebt(_yearMonth.value, debt, applyToFuture = true)
+    fun upsertDebt(debt: DebtEntry, applyToFuture: Boolean = true) = viewModelScope.launch {
+        repo.upsertDebt(_yearMonth.value, debt, applyToFuture = applyToFuture)
     }
 
     fun deleteDebt(id: String, deleteFuture: Boolean = false) = viewModelScope.launch {
