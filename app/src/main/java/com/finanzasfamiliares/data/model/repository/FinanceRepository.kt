@@ -2,6 +2,7 @@ package com.finanzasfamiliares.data.repository
 
 import android.content.Context
 import com.finanzasfamiliares.data.model.*
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FieldValue
@@ -525,7 +526,7 @@ class FinanceRepository @Inject constructor(
     fun observeSavings(yearMonth: String): Flow<List<Saving>> =
         observeMonth(yearMonth).map { it?.savings ?: emptyList() }
 
-    suspend fun upsertSaving(yearMonth: String, saving: Saving) {
+    suspend fun upsertSaving(yearMonth: String, saving: Saving, applyToFuture: Boolean = true) {
         val month = ensureMonthDocument(yearMonth)
         val updated = month.savings.toMutableList()
         val idx = updated.indexOfFirst { it.id == saving.id }
@@ -535,7 +536,43 @@ class FinanceRepository @Inject constructor(
             updated.add(saving)
         }
         saveMonth(month.copy(savings = updated))
-        applySavingToFuture(yearMonth, saving)
+        if (applyToFuture) {
+            applySavingToFuture(yearMonth, saving)
+        }
+    }
+
+    suspend fun adjustSaving(
+        yearMonth: String,
+        saving: Saving,
+        newName: String,
+        deltaAmount: Double,
+        lastUpdated: Timestamp = Timestamp.now()
+    ) {
+        val month = ensureMonthDocument(yearMonth)
+        val updated = month.savings.toMutableList()
+        val idx = updated.indexOfFirst { it.id == saving.id }
+        val currentSaving = if (idx >= 0) updated[idx] else saving
+        val adjustedSaving = currentSaving.applyDelta(
+            newName = newName,
+            deltaAmount = deltaAmount,
+            lastUpdated = lastUpdated
+        )
+
+        if (idx >= 0) {
+            updated[idx] = adjustedSaving
+        } else {
+            updated.add(adjustedSaving)
+        }
+
+        saveMonth(month.copy(savings = updated))
+        applySavingDeltaToFuture(
+            yearMonth = yearMonth,
+            savingId = adjustedSaving.id,
+            newName = newName,
+            deltaAmount = deltaAmount,
+            currency = adjustedSaving.currencyCode(),
+            lastUpdated = lastUpdated
+        )
     }
 
     suspend fun deleteSaving(yearMonth: String, id: String) {
@@ -790,6 +827,60 @@ class FinanceRepository @Inject constructor(
             if (updated.size != future.savings.size) {
                 saveMonth(future.copy(savings = updated))
             }
+        }
+    }
+
+    private suspend fun applySavingDeltaToFuture(
+        yearMonth: String,
+        savingId: String,
+        newName: String,
+        deltaAmount: Double,
+        currency: String,
+        lastUpdated: Timestamp
+    ) {
+        val futureMonths = getFutureMonthsFrom(yearMonth)
+        futureMonths.forEach { future ->
+            val updated = future.savings.toMutableList()
+            val idx = updated.indexOfFirst { it.id == savingId }
+            if (idx >= 0) {
+                updated[idx] = updated[idx].applyDelta(
+                    newName = newName,
+                    deltaAmount = deltaAmount,
+                    lastUpdated = lastUpdated
+                )
+            } else if (deltaAmount > 0.0) {
+                updated.add(
+                    Saving(
+                        id = savingId,
+                        name = newName,
+                        amountUYU = if (currency == IncomeCurrency.UYU) deltaAmount else 0.0,
+                        amountUSD = if (currency == IncomeCurrency.USD) deltaAmount else 0.0,
+                        currency = currency,
+                        lastUpdated = lastUpdated
+                    )
+                )
+            }
+            saveMonth(future.copy(savings = updated))
+        }
+    }
+
+    private fun Saving.applyDelta(
+        newName: String,
+        deltaAmount: Double,
+        lastUpdated: Timestamp
+    ): Saving {
+        return if (isInUSD()) {
+            copy(
+                name = newName,
+                amountUSD = (amountUSD + deltaAmount).coerceAtLeast(0.0),
+                lastUpdated = lastUpdated
+            )
+        } else {
+            copy(
+                name = newName,
+                amountUYU = (amountUYU + deltaAmount).coerceAtLeast(0.0),
+                lastUpdated = lastUpdated
+            )
         }
     }
 

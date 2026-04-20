@@ -25,7 +25,6 @@ import com.finanzasfamiliares.data.model.Saving
 import com.finanzasfamiliares.ui.components.*
 import java.text.SimpleDateFormat
 import java.util.Locale
-import kotlin.math.max
 
 private sealed interface SavingDeleteRequest {
     data class Single(val saving: Saving) : SavingDeleteRequest
@@ -189,7 +188,7 @@ fun SavingsScreen(
     if (showAddSaving) {
         SavingDialog(
             initial = null,
-            onConfirm = { name, amount, currency ->
+            onConfirm = { name, amount, currency, _ ->
                 viewModel.createSaving(name, amount, currency)
                 showAddSaving = false
             },
@@ -200,8 +199,8 @@ fun SavingsScreen(
     editingSaving?.let { saving ->
         SavingDialog(
             initial = saving,
-            onConfirm = { name, amount, currency ->
-                viewModel.updateSaving(saving, name, amount, currency)
+            onConfirm = { name, amount, currency, editMode ->
+                viewModel.updateSaving(saving, name, amount, currency, editMode)
                 editingSaving = null
             },
             onDismiss = { editingSaving = null }
@@ -249,7 +248,7 @@ fun SavingsScreen(
 @Composable
 private fun SavingDialog(
     initial: Saving?,
-    onConfirm: (String, Double, String) -> Unit,
+    onConfirm: (String, Double, String, SavingEditMode) -> Unit,
     onDismiss: () -> Unit
 ) {
     val initialCurrency = initial?.currencyCode() ?: IncomeCurrency.UYU
@@ -374,7 +373,7 @@ private fun SavingDialog(
         },
         confirmButton = {
             Button(onClick = {
-                val parsedAmount = amount.replace(",", ".").toDoubleOrNull() ?: 0.0
+                val parsedAmount = (amount.replace(",", ".").toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
                 val resolvedCurrency = if (initial != null && editMode != SavingEditMode.REPLACE) {
                     initialCurrency
                 } else if (isUSD) {
@@ -382,16 +381,11 @@ private fun SavingDialog(
                 } else {
                     IncomeCurrency.UYU
                 }
-                val resolvedAmount = when {
-                    initial == null -> parsedAmount
-                    editMode == SavingEditMode.REPLACE -> parsedAmount
-                    editMode == SavingEditMode.ADD -> initial.displayAmount() + parsedAmount
-                    else -> max(0.0, initial.displayAmount() - parsedAmount)
-                }
                 onConfirm(
                     name,
-                    resolvedAmount,
-                    resolvedCurrency
+                    parsedAmount,
+                    resolvedCurrency,
+                    editMode
                 )
             }) {
                 Text(stringResource(R.string.action_save))
@@ -403,10 +397,4 @@ private fun SavingDialog(
             }
         }
     )
-}
-
-private enum class SavingEditMode {
-    REPLACE,
-    ADD,
-    SUBTRACT
 }

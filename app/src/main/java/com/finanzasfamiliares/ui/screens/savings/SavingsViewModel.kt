@@ -15,6 +15,12 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
+enum class SavingEditMode {
+    REPLACE,
+    ADD,
+    SUBTRACT
+}
+
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
 class SavingsViewModel @Inject constructor(private val repo: FinanceRepository) : ViewModel() {
@@ -40,17 +46,40 @@ class SavingsViewModel @Inject constructor(private val repo: FinanceRepository) 
         }
     }
 
-    fun updateSaving(saving: Saving, newName: String, newAmount: Double, currency: String) = viewModelScope.launch {
-        repo.upsertSaving(
-            _yearMonth.value,
-            saving.copy(
-                name = newName,
-                amountUYU = if (currency == IncomeCurrency.UYU) newAmount else 0.0,
-                amountUSD = if (currency == IncomeCurrency.USD) newAmount else 0.0,
-                currency = currency,
+    fun updateSaving(
+        saving: Saving,
+        newName: String,
+        amount: Double,
+        currency: String,
+        editMode: SavingEditMode
+    ) = viewModelScope.launch {
+        when (editMode) {
+            SavingEditMode.REPLACE -> repo.upsertSaving(
+                _yearMonth.value,
+                saving.copy(
+                    name = newName,
+                    amountUYU = if (currency == IncomeCurrency.UYU) amount else 0.0,
+                    amountUSD = if (currency == IncomeCurrency.USD) amount else 0.0,
+                    currency = currency,
+                    lastUpdated = Timestamp.now()
+                ),
+                applyToFuture = false
+            )
+            SavingEditMode.ADD -> repo.adjustSaving(
+                yearMonth = _yearMonth.value,
+                saving = saving,
+                newName = newName,
+                deltaAmount = amount,
                 lastUpdated = Timestamp.now()
             )
-        )
+            SavingEditMode.SUBTRACT -> repo.adjustSaving(
+                yearMonth = _yearMonth.value,
+                saving = saving,
+                newName = newName,
+                deltaAmount = -amount,
+                lastUpdated = Timestamp.now()
+            )
+        }
     }
 
     fun createSaving(name: String, amount: Double, currency: String) = viewModelScope.launch {
