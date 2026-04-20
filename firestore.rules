@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function familyDoc(familyId) {
+      return get(/databases/$(database)/documents/families/$(familyId));
+    }
+
+    function isFamilyMember(familyId) {
+      return signedIn() &&
+             request.auth.uid in familyDoc(familyId).data.memberIds;
+    }
+
+    function isCreatingFamily() {
+      return signedIn() &&
+             request.resource.data.keys().hasOnly(['id', 'joinCode', 'memberIds']) &&
+             request.resource.data.id == request.auth.uid &&
+             request.resource.data.memberIds.size() == 1 &&
+             request.resource.data.memberIds[0] == request.auth.uid;
+    }
+
+    function isJoiningFamily() {
+      return signedIn() &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']) &&
+             !(request.auth.uid in resource.data.memberIds) &&
+             request.resource.data.memberIds.size() == resource.data.memberIds.size() + 1 &&
+             request.auth.uid in request.resource.data.memberIds &&
+             request.resource.data.memberIds.hasAll(resource.data.memberIds);
+    }
+
+    match /families/{familyId} {
+      allow create: if isCreatingFamily();
+      allow read: if isFamilyMember(familyId);
+      allow update: if isFamilyMember(familyId) || isJoiningFamily();
+      allow delete: if false;
+
+      match /{subcollection}/{docId} {
+        allow read, write: if isFamilyMember(familyId);
+      }
+    }
+
+    match /familyJoinCodes/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn() &&
+                    request.resource.data.keys().hasOnly(['familyId']) &&
+                    familyDoc(request.resource.data.familyId).data.joinCode == code &&
+                    request.auth.uid in familyDoc(request.resource.data.familyId).data.memberIds;
+      allow update, delete: if false;
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "362613753184",
+    "project_id": "finanzasfamiliares-228d2",
+    "storage_bucket": "finanzasfamiliares-228d2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:362613753184:android:5879f746a4a8e4846bca05",
+        "android_client_info": {
+          "package_name": "com.finanzasfamiliares"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC009KuC5j50FGfKa_gm7PgyFaQo-1x9zU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
