@@ -223,9 +223,11 @@ class FinanceRepository @Inject constructor(
             cardExchangeOffset = current.cardExchangeOffset,
             primaryIncomeUSD = current.primaryIncomeUSD,
             primaryIncomeUYUValue = current.primaryIncomeUYUValue,
-            donations = current.donations.filter { it.percentOfPrimaryIncome != null },
+            donations = current.donations
+                .filter { it.percentOfPrimaryIncome != null }
+                .map { it.asPending() },
             savings = current.savings,
-            fixedExpenses = current.fixedExpenses,
+            fixedExpenses = current.fixedExpenses.map { it.copy(isPaid = false) },
             cardExpenses = current.cardExpenses.mapNotNull { it.advanceToNextMonth() },
             debts = current.debts.mapNotNull { it.advanceToNextMonth() }
         )
@@ -251,10 +253,20 @@ class FinanceRepository @Inject constructor(
         applyFixedExpenseToFuture(yearMonth, savedExpense)
     }
 
-    suspend fun deleteFixedExpense(yearMonth: String, id: String) {
+    suspend fun deleteFixedExpense(yearMonth: String, id: String, deleteFuture: Boolean = false) {
         val month = getMonth(yearMonth) ?: return
         saveMonth(month.copy(fixedExpenses = month.fixedExpenses.filter { it.id != id }))
-        removeFixedExpenseFromFuture(yearMonth, id)
+        if (deleteFuture) {
+            removeFixedExpenseFromFuture(yearMonth, id)
+        }
+    }
+
+    suspend fun updateFixedExpensePaid(yearMonth: String, id: String, isPaid: Boolean) {
+        val month = getMonth(yearMonth) ?: return
+        val updated = month.fixedExpenses.map { expense ->
+            if (expense.id == id) expense.copy(isPaid = isPaid) else expense
+        }
+        saveMonth(month.copy(fixedExpenses = updated))
     }
 
     suspend fun upsertCardExpense(yearMonth: String, expense: CardExpense, applyToFuture: Boolean = false) {
@@ -268,9 +280,30 @@ class FinanceRepository @Inject constructor(
         }
     }
 
-    suspend fun deleteCardExpense(yearMonth: String, id: String) {
+    suspend fun deleteCardExpense(yearMonth: String, id: String, deleteFuture: Boolean = false) {
         val month = getMonth(yearMonth) ?: return
         saveMonth(month.copy(cardExpenses = month.cardExpenses.filter { it.id != id }))
+        if (deleteFuture) {
+            removeCardExpenseFromFuture(yearMonth, id)
+        }
+    }
+
+    suspend fun updateCardExpensePaid(yearMonth: String, id: String, isPaid: Boolean) {
+        val month = getMonth(yearMonth) ?: return
+        val updated = month.cardExpenses.map { expense ->
+            if (expense.id == id) expense.copy(isPaid = isPaid) else expense
+        }
+        saveMonth(month.copy(cardExpenses = updated))
+    }
+
+    suspend fun updateAllCardExpensesPaid(yearMonth: String, isPaid: Boolean) {
+        val month = getMonth(yearMonth) ?: return
+        if (month.cardExpenses.isEmpty()) return
+        saveMonth(
+            month.copy(
+                cardExpenses = month.cardExpenses.map { it.copy(isPaid = isPaid) }
+            )
+        )
     }
 
     suspend fun upsertDebt(yearMonth: String, debt: DebtEntry, applyToFuture: Boolean = false) {
@@ -284,9 +317,20 @@ class FinanceRepository @Inject constructor(
         }
     }
 
-    suspend fun deleteDebt(yearMonth: String, id: String) {
+    suspend fun deleteDebt(yearMonth: String, id: String, deleteFuture: Boolean = false) {
         val month = getMonth(yearMonth) ?: return
         saveMonth(month.copy(debts = month.debts.filter { it.id != id }))
+        if (deleteFuture) {
+            removeDebtFromFuture(yearMonth, id)
+        }
+    }
+
+    suspend fun updateDebtPaid(yearMonth: String, id: String, isPaid: Boolean) {
+        val month = getMonth(yearMonth) ?: return
+        val updated = month.debts.map { debt ->
+            if (debt.id == id) debt.copy(isPaid = isPaid) else debt
+        }
+        saveMonth(month.copy(debts = updated))
     }
 
     suspend fun upsertVariableIncome(yearMonth: String, income: MoneyEntry) {
@@ -315,6 +359,14 @@ class FinanceRepository @Inject constructor(
         saveMonth(month.copy(variableExpenses = month.variableExpenses.filter { it.id != id }))
     }
 
+    suspend fun updateVariableExpensePaid(yearMonth: String, id: String, isPaid: Boolean) {
+        val month = getMonth(yearMonth) ?: return
+        val updated = month.variableExpenses.map { expense ->
+            if (expense.id == id) expense.copy(isPaid = isPaid) else expense
+        }
+        saveMonth(month.copy(variableExpenses = updated))
+    }
+
     suspend fun upsertDonation(yearMonth: String, donation: Donation) {
         val month = ensureMonthDocument(yearMonth)
         val updated = month.donations.toMutableList()
@@ -326,6 +378,14 @@ class FinanceRepository @Inject constructor(
     suspend fun deleteDonation(yearMonth: String, id: String) {
         val month = getMonth(yearMonth) ?: return
         saveMonth(month.copy(donations = month.donations.filter { it.id != id }))
+    }
+
+    suspend fun updateDonationPaid(yearMonth: String, id: String, isPaid: Boolean) {
+        val month = getMonth(yearMonth) ?: return
+        val updated = month.donations.map { donation ->
+            if (donation.id == id) donation.copy(isPaid = isPaid) else donation
+        }
+        saveMonth(month.copy(donations = updated))
     }
 
     suspend fun updatePrimaryIncome(
@@ -361,6 +421,34 @@ class FinanceRepository @Inject constructor(
             val futureMonths = getFutureMonthsFrom(yearMonth)
             futureMonths.forEach { future ->
                 saveMonth(future.copy(exchangeRate = rate))
+            }
+        }
+    }
+
+    suspend fun updateMonthExchangeSettings(
+        yearMonth: String,
+        rate: Double,
+        cardExchangeRate: Double,
+        applyToFuture: Boolean = false
+    ) {
+        val normalizedCardRate = cardExchangeRate.coerceAtLeast(rate)
+        val offset = normalizedCardRate - rate
+        val month = ensureMonthDocument(yearMonth)
+        saveMonth(
+            month.copy(
+                exchangeRate = rate,
+                cardExchangeOffset = offset
+            )
+        )
+        if (applyToFuture) {
+            val futureMonths = getFutureMonthsFrom(yearMonth)
+            futureMonths.forEach { future ->
+                saveMonth(
+                    future.copy(
+                        exchangeRate = rate,
+                        cardExchangeOffset = offset
+                    )
+                )
             }
         }
     }
@@ -406,14 +494,16 @@ class FinanceRepository @Inject constructor(
                     yearMonth = nextKey,
                     exchangeRate = current.exchangeRate,
                     cardExchangeOffset = current.cardExchangeOffset,
-                    primaryIncomeUSD = current.primaryIncomeUSD,
-                    primaryIncomeUYUValue = current.primaryIncomeUYUValue,
-                    donations = current.donations.filter { it.percentOfPrimaryIncome != null },
-                    savings = current.savings,
-                    fixedExpenses = current.fixedExpenses,
-                    cardExpenses = current.cardExpenses.mapNotNull { it.advanceToNextMonth() },
-                    debts = current.debts.mapNotNull { it.advanceToNextMonth() }
-                )
+                primaryIncomeUSD = current.primaryIncomeUSD,
+                primaryIncomeUYUValue = current.primaryIncomeUYUValue,
+                donations = current.donations
+                    .filter { it.percentOfPrimaryIncome != null }
+                    .map { it.asPending() },
+                savings = current.savings,
+                fixedExpenses = current.fixedExpenses.map { it.copy(isPaid = false) },
+                cardExpenses = current.cardExpenses.mapNotNull { it.advanceToNextMonth() },
+                debts = current.debts.mapNotNull { it.advanceToNextMonth() }
+            )
                 saveMonth(nextMonth)
                 current = nextMonth
                 lastCreatedKey = nextKey
@@ -544,9 +634,11 @@ class FinanceRepository @Inject constructor(
                 cardExchangeOffset = previousMonth.cardExchangeOffset,
                 primaryIncomeUSD = previousMonth.primaryIncomeUSD,
                 primaryIncomeUYUValue = previousMonth.primaryIncomeUYUValue,
-                donations = previousMonth.donations.filter { it.percentOfPrimaryIncome != null },
+                donations = previousMonth.donations
+                    .filter { it.percentOfPrimaryIncome != null }
+                    .map { it.asPending() },
                 savings = previousMonth.savings,
-                fixedExpenses = previousMonth.fixedExpenses,
+                fixedExpenses = previousMonth.fixedExpenses.map { it.copy(isPaid = false) },
                 cardExpenses = previousMonth.cardExpenses.mapNotNull { it.advanceToNextMonth() },
                 debts = previousMonth.debts.mapNotNull { it.advanceToNextMonth() }
             )
@@ -630,9 +722,12 @@ class FinanceRepository @Inject constructor(
             val updated = future.fixedExpenses.toMutableList()
             val idx = updated.indexOfFirst { it.id == expense.id }
             if (idx >= 0) {
-                updated[idx] = expense.copy(isPinned = true)
+                updated[idx] = expense.copy(
+                    isPinned = true,
+                    isPaid = updated[idx].isPaid
+                )
             } else {
-                updated.add(expense.copy(isPinned = true))
+                updated.add(expense.copy(isPinned = true, isPaid = false))
             }
             saveMonth(future.copy(fixedExpenses = updated))
         }
@@ -644,6 +739,26 @@ class FinanceRepository @Inject constructor(
             val updated = future.fixedExpenses.filter { it.id != id }
             if (updated.size != future.fixedExpenses.size) {
                 saveMonth(future.copy(fixedExpenses = updated))
+            }
+        }
+    }
+
+    private suspend fun removeCardExpenseFromFuture(yearMonth: String, id: String) {
+        val futureMonths = getFutureMonthsFrom(yearMonth)
+        futureMonths.forEach { future ->
+            val updated = future.cardExpenses.filter { it.id != id }
+            if (updated.size != future.cardExpenses.size) {
+                saveMonth(future.copy(cardExpenses = updated))
+            }
+        }
+    }
+
+    private suspend fun removeDebtFromFuture(yearMonth: String, id: String) {
+        val futureMonths = getFutureMonthsFrom(yearMonth)
+        futureMonths.forEach { future ->
+            val updated = future.debts.filter { it.id != id }
+            if (updated.size != future.debts.size) {
+                saveMonth(future.copy(debts = updated))
             }
         }
     }
@@ -680,10 +795,15 @@ class FinanceRepository @Inject constructor(
             val idx = updated.indexOfFirst { it.id == expense.id }
             var changed = false
             if (propagatedExpense != null) {
-                if (idx >= 0) {
-                    updated[idx] = propagatedExpense!!
+                val pendingExpense = if (idx >= 0) {
+                    propagatedExpense!!.copy(isPaid = updated[idx].isPaid)
                 } else {
-                    updated.add(propagatedExpense!!)
+                    propagatedExpense!!.copy(isPaid = false)
+                }
+                if (idx >= 0) {
+                    updated[idx] = pendingExpense
+                } else {
+                    updated.add(pendingExpense)
                 }
                 changed = true
             } else if (idx >= 0) {
@@ -705,10 +825,15 @@ class FinanceRepository @Inject constructor(
             val idx = updated.indexOfFirst { it.id == debt.id }
             var changed = false
             if (propagatedDebt != null) {
-                if (idx >= 0) {
-                    updated[idx] = propagatedDebt!!
+                val pendingDebt = if (idx >= 0) {
+                    propagatedDebt!!.copy(isPaid = updated[idx].isPaid)
                 } else {
-                    updated.add(propagatedDebt!!)
+                    propagatedDebt!!.copy(isPaid = false)
+                }
+                if (idx >= 0) {
+                    updated[idx] = pendingDebt
+                } else {
+                    updated.add(pendingDebt)
                 }
                 changed = true
             } else if (idx >= 0) {

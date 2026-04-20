@@ -44,6 +44,10 @@ class DonationsViewModel @Inject constructor(private val repo: FinanceRepository
         repo.deleteDonation(_yearMonth.value, id)
     }
 
+    fun setDonationPaid(id: String, isPaid: Boolean) = viewModelScope.launch {
+        repo.updateDonationPaid(_yearMonth.value, id, isPaid)
+    }
+
     fun deleteDonations(ids: Set<String>) = viewModelScope.launch {
         ids.forEach { repo.deleteDonation(_yearMonth.value, it) }
     }

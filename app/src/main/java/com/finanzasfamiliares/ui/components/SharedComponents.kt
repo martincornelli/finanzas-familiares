@@ -83,7 +83,8 @@ fun SectionHeader(
     total: String? = null,
     modifier: Modifier = Modifier,
     expanded: Boolean? = null,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    trailingContent: (@Composable RowScope.() -> Unit)? = null
 ) {
     Row(
         modifier
@@ -111,7 +112,15 @@ fun SectionHeader(
                 )
             }
         }
-        if (total != null) Text(total, style = MaterialTheme.typography.titleSmall)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (total != null) {
+                Text(total, style = MaterialTheme.typography.titleSmall)
+            }
+            trailingContent?.invoke(this)
+        }
     }
 }
 

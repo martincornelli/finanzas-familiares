@@ -27,6 +27,11 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.max
 
+private sealed interface SavingDeleteRequest {
+    data class Single(val saving: Saving) : SavingDeleteRequest
+    data class Bulk(val ids: Set<String>) : SavingDeleteRequest
+}
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun SavingsScreen(yearMonth: String, viewModel: SavingsViewModel = hiltViewModel()) {
@@ -37,6 +42,7 @@ fun SavingsScreen(yearMonth: String, viewModel: SavingsViewModel = hiltViewModel
     var showAddSaving by remember { mutableStateOf(false) }
     var editingSaving by remember { mutableStateOf<Saving?>(null) }
     var selectedSavingIds by remember { mutableStateOf(setOf<String>()) }
+    var deleteRequest by remember { mutableStateOf<SavingDeleteRequest?>(null) }
     val dateFmt = remember { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("es", "UY")) }
 
     fun toggleSelection(id: String) {
@@ -87,8 +93,7 @@ fun SavingsScreen(yearMonth: String, viewModel: SavingsViewModel = hiltViewModel
                             fontWeight = FontWeight.SemiBold
                         )
                         TextButton(onClick = {
-                            viewModel.deleteSavings(selectedSavingIds)
-                            selectedSavingIds = emptySet()
+                            deleteRequest = SavingDeleteRequest.Bulk(selectedSavingIds)
                         }) {
                             Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
@@ -183,6 +188,42 @@ fun SavingsScreen(yearMonth: String, viewModel: SavingsViewModel = hiltViewModel
                 editingSaving = null
             },
             onDismiss = { editingSaving = null }
+        )
+    }
+    deleteRequest?.let { request ->
+        AlertDialog(
+            onDismissRequest = { deleteRequest = null },
+            title = { Text(stringResource(R.string.delete_confirm_title)) },
+            text = {
+                Text(
+                    when (request) {
+                        is SavingDeleteRequest.Single -> stringResource(
+                            R.string.delete_confirm_named,
+                            request.saving.name.ifBlank { stringResource(R.string.savings_title) }
+                        )
+                        is SavingDeleteRequest.Bulk -> stringResource(R.string.delete_confirm_selected)
+                    }
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    when (request) {
+                        is SavingDeleteRequest.Single -> viewModel.deleteSaving(request.saving.id)
+                        is SavingDeleteRequest.Bulk -> {
+                            viewModel.deleteSavings(request.ids)
+                            selectedSavingIds = emptySet()
+                        }
+                    }
+                    deleteRequest = null
+                }) {
+                    Text(stringResource(R.string.action_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteRequest = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
         )
     }
 }

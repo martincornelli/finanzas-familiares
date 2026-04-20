@@ -1,6 +1,8 @@
 package com.finanzasfamiliares
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -9,9 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.compose.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.finanzasfamiliares.ui.SharedMonthViewModel
 import com.finanzasfamiliares.ui.screens.analysis.AnalysisScreen
 import com.finanzasfamiliares.ui.screens.config.ConfigScreen
@@ -33,9 +33,8 @@ val bottomNavItems = listOf(Screen.Summary, Screen.Expenses, Screen.Tithe, Scree
 
 @Composable
 fun FinanzasApp() {
-    val navController = rememberNavController()
     val sharedMonth: SharedMonthViewModel = hiltViewModel()
-    val currentYearMonth by sharedMonth.yearMonth.collectAsState()
+    var currentRoute by rememberSaveable { mutableStateOf(Screen.Summary.route) }
 
     LaunchedEffect(Unit) {
         sharedMonth.resetToCurrentMonth()
@@ -44,8 +43,6 @@ fun FinanzasApp() {
     Scaffold(
         bottomBar = {
             NavigationBar {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentDestination = navBackStackEntry?.destination
                 bottomNavItems.forEach { screen ->
                     NavigationBarItem(
                         icon = {
@@ -56,26 +53,53 @@ fun FinanzasApp() {
                         },
                         label = null,
                         alwaysShowLabel = false,
-                        selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
+                        selected = currentRoute == screen.route,
                         onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
+                            currentRoute = screen.route
                         }
                     )
                 }
             }
         }
     ) { innerPadding ->
-        NavHost(navController, Screen.Summary.route, Modifier.padding(innerPadding)) {
-            composable(Screen.Summary.route)  { SummaryScreen(onYearMonthChange = sharedMonth::set) }
-            composable(Screen.Expenses.route) { ExpensesScreen(yearMonth = currentYearMonth) }
-            composable(Screen.Tithe.route)    { DonationsScreen(yearMonth = currentYearMonth) }
-            composable(Screen.Savings.route)  { SavingsScreen(yearMonth = currentYearMonth) }
-            composable(Screen.Analysis.route) { AnalysisScreen(yearMonth = currentYearMonth) }
-            composable(Screen.Config.route)   { ConfigScreen() }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            when (currentRoute) {
+                Screen.Summary.route -> SummaryScreen(onYearMonthChange = sharedMonth::set)
+                Screen.Expenses.route -> ExpensesRoute(sharedMonth = sharedMonth)
+                Screen.Tithe.route -> DonationsRoute(sharedMonth = sharedMonth)
+                Screen.Savings.route -> SavingsRoute(sharedMonth = sharedMonth)
+                Screen.Analysis.route -> AnalysisRoute(sharedMonth = sharedMonth)
+                Screen.Config.route -> ConfigScreen()
+                else -> SummaryScreen(onYearMonthChange = sharedMonth::set)
+            }
         }
     }
+}
+
+@Composable
+private fun ExpensesRoute(sharedMonth: SharedMonthViewModel) {
+    val currentYearMonth by sharedMonth.yearMonth.collectAsState()
+    ExpensesScreen(yearMonth = currentYearMonth)
+}
+
+@Composable
+private fun DonationsRoute(sharedMonth: SharedMonthViewModel) {
+    val currentYearMonth by sharedMonth.yearMonth.collectAsState()
+    DonationsScreen(yearMonth = currentYearMonth)
+}
+
+@Composable
+private fun SavingsRoute(sharedMonth: SharedMonthViewModel) {
+    val currentYearMonth by sharedMonth.yearMonth.collectAsState()
+    SavingsScreen(yearMonth = currentYearMonth)
+}
+
+@Composable
+private fun AnalysisRoute(sharedMonth: SharedMonthViewModel) {
+    val currentYearMonth by sharedMonth.yearMonth.collectAsState()
+    AnalysisScreen(yearMonth = currentYearMonth)
 }

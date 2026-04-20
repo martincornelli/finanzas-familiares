@@ -22,6 +22,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -44,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,6 +60,17 @@ import com.finanzasfamiliares.ui.components.formatUYU
 import com.finanzasfamiliares.ui.components.toInputAmount
 import java.util.UUID
 
+private val PaidDonationBackgroundColor = Color(0xFFE0F4E5)
+
+private enum class DonationPaymentFilter {
+    ALL, PENDING, PAID
+}
+
+private sealed interface DonationDeleteRequest {
+    data class Single(val donation: Donation) : DonationDeleteRequest
+    data class Bulk(val ids: Set<String>) : DonationDeleteRequest
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewModel()) {
@@ -67,10 +80,23 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
     val config by viewModel.currentConfig.collectAsState()
     val incomeCurrency = config.incomeCurrency
     val totalIncomeUYU = data?.totalIncomeInUYU(incomeCurrency) ?: 0.0
-    val donationsUYU = data?.donationsInUYU(incomeCurrency) ?: 0.0
     var showDonationDialog by remember { mutableStateOf(false) }
     var editingDonation by remember { mutableStateOf<Donation?>(null) }
     var selectedDonationIds by remember { mutableStateOf(setOf<String>()) }
+    var deleteRequest by remember { mutableStateOf<DonationDeleteRequest?>(null) }
+    var paymentFilter by remember { mutableStateOf(DonationPaymentFilter.ALL) }
+    val allDonations = data?.donations ?: emptyList()
+
+    fun matchesPayment(isPaid: Boolean): Boolean = when (paymentFilter) {
+        DonationPaymentFilter.ALL -> true
+        DonationPaymentFilter.PENDING -> !isPaid
+        DonationPaymentFilter.PAID -> isPaid
+    }
+
+    val filteredDonations = allDonations.filter { matchesPayment(it.isPaid) }
+    val visibleDonationsUYU = filteredDonations.sumOf { it.totalUYU(totalIncomeUYU, data?.cardExchangeRate ?: 0.0) }
+    val paidDonationsUYU = allDonations.filter { it.isPaid }.sumOf { it.totalUYU(totalIncomeUYU, data?.cardExchangeRate ?: 0.0) }
+    val pendingDonationsUYU = allDonations.filter { !it.isPaid }.sumOf { it.totalUYU(totalIncomeUYU, data?.cardExchangeRate ?: 0.0) }
 
     fun toggleSelection(id: String) {
         selectedDonationIds = if (selectedDonationIds.contains(id)) {
@@ -123,8 +149,7 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
                             fontWeight = FontWeight.SemiBold
                         )
                         TextButton(onClick = {
-                            viewModel.deleteDonations(selectedDonationIds)
-                            selectedDonationIds = emptySet()
+                            deleteRequest = DonationDeleteRequest.Bulk(selectedDonationIds)
                         }) {
                             Text(stringResource(R.string.action_delete_selected))
                         }
@@ -148,7 +173,7 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            donationsUYU.formatUYU(),
+                            visibleDonationsUYU.formatUYU(),
                             style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                             fontWeight = FontWeight.ExtraBold
@@ -161,13 +186,41 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = paymentFilter == DonationPaymentFilter.ALL,
+                                onClick = { paymentFilter = DonationPaymentFilter.ALL },
+                                label = { Text(stringResource(R.string.common_filter_all)) }
+                            )
+                            FilterChip(
+                                selected = paymentFilter == DonationPaymentFilter.PENDING,
+                                onClick = { paymentFilter = DonationPaymentFilter.PENDING },
+                                label = { Text(stringResource(R.string.common_filter_pending)) }
+                            )
+                            FilterChip(
+                                selected = paymentFilter == DonationPaymentFilter.PAID,
+                                onClick = { paymentFilter = DonationPaymentFilter.PAID },
+                                label = { Text(stringResource(R.string.common_filter_paid)) }
+                            )
+                        }
+                        DonationSummaryRow(
+                            label = stringResource(R.string.donations_paid_total),
+                            value = paidDonationsUYU.formatUYU()
+                        )
+                        DonationSummaryRow(
+                            label = stringResource(R.string.donations_pending_total),
+                            value = pendingDonationsUYU.formatUYU()
+                        )
                     }
                 }
 
                 Spacer(Modifier.height(16.dp))
             }
 
-            items(data?.donations ?: emptyList(), key = { it.id }) { donation ->
+            items(filteredDonations, key = { it.id }) { donation ->
                 DonationRow(
                     donation = donation,
                     totalIncomeUYU = totalIncomeUYU,
@@ -176,12 +229,13 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
                     selected = selectedDonationIds.contains(donation.id),
                     selectionMode = selectedDonationIds.isNotEmpty(),
                     onToggleSelection = { toggleSelection(donation.id) },
+                    onTogglePaid = { viewModel.setDonationPaid(donation.id, it) },
                     onEdit = { editingDonation = donation },
-                    onDelete = { viewModel.deleteDonation(donation.id) }
+                    onDelete = { deleteRequest = DonationDeleteRequest.Single(donation) }
                 )
             }
 
-            if ((data?.donations ?: emptyList()).isEmpty()) {
+            if (filteredDonations.isEmpty()) {
                 item {
                     Text(
                         stringResource(R.string.donations_empty_state),
@@ -207,6 +261,64 @@ fun DonationsScreen(yearMonth: String, viewModel: DonationsViewModel = hiltViewM
             }
         )
     }
+    deleteRequest?.let { request ->
+        val message = when (request) {
+            is DonationDeleteRequest.Single -> stringResource(
+                R.string.delete_confirm_named,
+                request.donation.name.ifBlank { stringResource(R.string.donations_item_fallback) }
+            )
+            is DonationDeleteRequest.Bulk -> stringResource(R.string.delete_confirm_selected)
+        }
+        DonationDeleteConfirmationDialog(
+            message = message,
+            onConfirm = {
+                when (request) {
+                    is DonationDeleteRequest.Single -> viewModel.deleteDonation(request.donation.id)
+                    is DonationDeleteRequest.Bulk -> {
+                        viewModel.deleteDonations(request.ids)
+                        selectedDonationIds = emptySet()
+                    }
+                }
+                deleteRequest = null
+            },
+            onDismiss = { deleteRequest = null }
+        )
+    }
+}
+
+@Composable
+private fun DonationDeleteConfirmationDialog(
+    message: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.delete_confirm_title)) },
+        text = { Text(message) },
+        confirmButton = {
+            Button(onClick = onConfirm) {
+                Text(stringResource(R.string.action_delete))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun DonationSummaryRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold)
+    }
 }
 
 @Composable
@@ -219,6 +331,7 @@ private fun DonationRow(
     selected: Boolean,
     selectionMode: Boolean,
     onToggleSelection: () -> Unit,
+    onTogglePaid: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -230,13 +343,19 @@ private fun DonationRow(
         stringResource(R.string.donations_manual_summary)
     }
 
+    val containerColor = when {
+        selected -> MaterialTheme.colorScheme.secondaryContainer
+        donation.isPaid -> PaidDonationBackgroundColor
+        else -> MaterialTheme.colorScheme.surface
+    }
+
     ListItem(
         modifier = Modifier.combinedClickable(
             onClick = { if (!readOnly && selectionMode) onToggleSelection() },
             onLongClick = { if (!readOnly) onToggleSelection() }
         ),
         colors = ListItemDefaults.colors(
-            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+            containerColor = containerColor
         ),
         headlineContent = {
             Text(donation.name.ifBlank { stringResource(R.string.donations_item_fallback) })
@@ -250,6 +369,12 @@ private fun DonationRow(
                     donation.totalUYU(totalIncomeUYU, exchangeRate).formatUYU(),
                     fontWeight = FontWeight.Medium
                 )
+                if (!selectionMode) {
+                    Checkbox(
+                        checked = donation.isPaid,
+                        onCheckedChange = if (readOnly) null else onTogglePaid
+                    )
+                }
                 if (!readOnly && !selectionMode) {
                     IconButton(onClick = onEdit) {
                         Icon(Icons.Default.Edit, stringResource(R.string.action_edit))
@@ -352,7 +477,8 @@ private fun DonationDialog(
                         amountUYU = if (!usePercentage && !isUSD) parsedAmount else 0.0,
                         isUSD = !usePercentage && isUSD,
                         currency = if (!usePercentage && isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
-                        percentOfPrimaryIncome = if (usePercentage) parsedPercent ?: 0.0 else null
+                        percentOfPrimaryIncome = if (usePercentage) parsedPercent ?: 0.0 else null,
+                        isPaid = initial?.isPaid ?: false
                     )
                 )
             }) {

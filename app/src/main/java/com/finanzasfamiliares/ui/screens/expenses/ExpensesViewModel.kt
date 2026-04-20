@@ -44,15 +44,27 @@ class ExpensesViewModel @Inject constructor(private val repo: FinanceRepository)
     fun upsertFixed(expense: FixedExpense) = viewModelScope.launch {
         repo.upsertFixedExpense(_yearMonth.value, expense)
     }
-    fun deleteFixed(id: String) = viewModelScope.launch {
-        repo.deleteFixedExpense(_yearMonth.value, id)
+    fun deleteFixed(id: String, deleteFuture: Boolean = false) = viewModelScope.launch {
+        repo.deleteFixedExpense(_yearMonth.value, id, deleteFuture)
+    }
+
+    fun setFixedPaid(id: String, isPaid: Boolean) = viewModelScope.launch {
+        repo.updateFixedExpensePaid(_yearMonth.value, id, isPaid)
     }
 
     fun upsertCard(expense: CardExpense) = viewModelScope.launch {
         repo.upsertCardExpense(_yearMonth.value, expense, applyToFuture = true)
     }
-    fun deleteCard(id: String) = viewModelScope.launch {
-        repo.deleteCardExpense(_yearMonth.value, id)
+    fun deleteCard(id: String, deleteFuture: Boolean = false) = viewModelScope.launch {
+        repo.deleteCardExpense(_yearMonth.value, id, deleteFuture)
+    }
+
+    fun setCardPaid(id: String, isPaid: Boolean) = viewModelScope.launch {
+        repo.updateCardExpensePaid(_yearMonth.value, id, isPaid)
+    }
+
+    fun setAllCardPaid(isPaid: Boolean) = viewModelScope.launch {
+        repo.updateAllCardExpensesPaid(_yearMonth.value, isPaid)
     }
 
     fun upsertVariableExpense(expense: MoneyEntry) = viewModelScope.launch {
@@ -63,12 +75,20 @@ class ExpensesViewModel @Inject constructor(private val repo: FinanceRepository)
         repo.deleteVariableExpense(_yearMonth.value, id)
     }
 
+    fun setVariableExpensePaid(id: String, isPaid: Boolean) = viewModelScope.launch {
+        repo.updateVariableExpensePaid(_yearMonth.value, id, isPaid)
+    }
+
     fun upsertDebt(debt: DebtEntry) = viewModelScope.launch {
         repo.upsertDebt(_yearMonth.value, debt, applyToFuture = true)
     }
 
-    fun deleteDebt(id: String) = viewModelScope.launch {
-        repo.deleteDebt(_yearMonth.value, id)
+    fun deleteDebt(id: String, deleteFuture: Boolean = false) = viewModelScope.launch {
+        repo.deleteDebt(_yearMonth.value, id, deleteFuture)
+    }
+
+    fun setDebtPaid(id: String, isPaid: Boolean) = viewModelScope.launch {
+        repo.updateDebtPaid(_yearMonth.value, id, isPaid)
     }
 
     fun deleteSelected(keys: Set<String>) = viewModelScope.launch {

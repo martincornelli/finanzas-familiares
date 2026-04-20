@@ -15,6 +15,10 @@
     <string name="action_edit">Editar</string>
     <string name="action_delete">Eliminar</string>
     <string name="action_delete_selected">Eliminar seleccionados</string>
+    <string name="delete_confirm_title">Confirmar eliminacion</string>
+    <string name="delete_confirm_named">¿Seguro que deseas eliminar "%1$s"?</string>
+    <string name="delete_confirm_selected">¿Seguro que deseas eliminar los elementos seleccionados?</string>
+    <string name="delete_confirm_future">Eliminar tambien de los meses siguientes</string>
     <string name="action_pin">Pin</string>
     <string name="selection_count">%1$d seleccionados</string>
     <string name="startup_loading">Cargando tus finanzas...</string>
@@ -58,6 +62,9 @@
     <string name="common_category_use_list">Usar categorías sugeridas</string>
     <string name="common_category_open">Abrir categorías</string>
     <string name="common_apply_to_future">Aplicar a los meses siguientes</string>
+    <string name="common_filter_all">Todos</string>
+    <string name="common_filter_pending">Pendientes</string>
+    <string name="common_filter_paid">Pagados</string>
 
     <string name="summary_margin_label">Margen disponible</string>
     <string name="summary_margin_hint">Disponible luego de gastos y donativos</string>
@@ -115,6 +122,8 @@
     <string name="expenses_filtered_total">Total visible calculado en pesos</string>
     <string name="expenses_filtered_total_uyu">Total visible en pesos</string>
     <string name="expenses_filtered_total_usd">Total visible en d&#243;lares</string>
+    <string name="expenses_paid_total">Total pagado</string>
+    <string name="expenses_pending_total">Total pendiente</string>
     <string name="expenses_add_fixed_cd">Agregar gasto fijo</string>
     <string name="expenses_add_variable_cd">Agregar gasto variable</string>
     <string name="expenses_add_card_cd">Agregar gasto de tarjeta</string>
@@ -123,9 +132,12 @@
     <string name="expenses_menu_add_variable">Gasto variable</string>
     <string name="expenses_menu_add_card">Gasto de tarjeta</string>
     <string name="expenses_menu_add_debt">Deuda</string>
+    <string name="expenses_card_mark_all_paid">Todo pagado</string>
+    <string name="expenses_card_paid_label">Pago</string>
     <string name="expenses_pinned_hint">Se repite el mes que viene</string>
     <string name="expenses_fixed_recurring_hint">Se replica automaticamente en este mes y los siguientes</string>
     <string name="expenses_variable_item_fallback">Gasto variable</string>
+    <string name="expenses_delete_item_fallback">este gasto</string>
 
     <string name="dialog_fixed_title_new">Nuevo gasto fijo</string>
     <string name="dialog_fixed_title_edit">Editar gasto fijo</string>
@@ -183,6 +195,8 @@
     <string name="donations_percent_summary">%1$.2f%% de los ingresos totales</string>
     <string name="donations_manual_summary">Monto manual</string>
     <string name="donations_item_fallback">Donativo</string>
+    <string name="donations_paid_total">Pagado</string>
+    <string name="donations_pending_total">Pendiente</string>
     <string name="donations_use_percentage">Calcular como porcentaje de los ingresos totales</string>
     <string name="donations_percentage_label">Porcentaje</string>
     <string name="donations_percentage_hint">Ejemplo: 10 para un diezmo tradicional</string>

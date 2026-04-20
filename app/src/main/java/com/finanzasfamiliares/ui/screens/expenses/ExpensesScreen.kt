@@ -5,6 +5,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -26,6 +28,8 @@ import androidx.compose.material.icons.filled.CleaningServices
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocalHospital
@@ -62,9 +66,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.finanzasfamiliares.R
@@ -88,6 +95,20 @@ private enum class ExpenseSection {
     FIXED, VARIABLE, CARD, DEBT
 }
 
+private enum class PaymentFilter {
+    ALL, PENDING, PAID
+}
+
+private val PaidBackgroundColor = Color(0xFFE0F4E5)
+
+private sealed interface ExpenseDeleteRequest {
+    data class Fixed(val expense: FixedExpense) : ExpenseDeleteRequest
+    data class Variable(val expense: MoneyEntry) : ExpenseDeleteRequest
+    data class Card(val expense: CardExpense) : ExpenseDeleteRequest
+    data class Debt(val debt: DebtEntry) : ExpenseDeleteRequest
+    data class Bulk(val keys: Set<String>) : ExpenseDeleteRequest
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewModel()) {
@@ -104,7 +125,9 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
     var editVariable by remember { mutableStateOf<MoneyEntry?>(null) }
     var editCard by remember { mutableStateOf<CardExpense?>(null) }
     var editDebt by remember { mutableStateOf<DebtEntry?>(null) }
+    var deleteRequest by remember { mutableStateOf<ExpenseDeleteRequest?>(null) }
     var searchQuery by remember { mutableStateOf("") }
+    var paymentFilter by remember { mutableStateOf(PaymentFilter.ALL) }
     var collapsedSections by remember { mutableStateOf(setOf<ExpenseSection>()) }
     var selectedExpenseKeys by remember { mutableStateOf(setOf<String>()) }
     val cardRate = data?.cardExchangeRate ?: 0.0
@@ -124,22 +147,35 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
             name.lowercase().contains(normalizedQuery) ||
             category.lowercase().contains(normalizedQuery)
 
-    val filteredFixedExpenses = (data?.fixedExpenses ?: emptyList()).filter {
+    fun matchesPayment(isPaid: Boolean): Boolean = when (paymentFilter) {
+        PaymentFilter.ALL -> true
+        PaymentFilter.PENDING -> !isPaid
+        PaymentFilter.PAID -> isPaid
+    }
+
+    val matchedFixedExpenses = (data?.fixedExpenses ?: emptyList()).filter {
         matchesQuery(it.name, it.category)
     }
-    val filteredVariableExpenses = (data?.variableExpenses ?: emptyList()).filter {
+    val matchedVariableExpenses = (data?.variableExpenses ?: emptyList()).filter {
         matchesQuery(it.name, it.category)
     }
-    val filteredCardExpenses = (data?.cardExpenses ?: emptyList()).filter {
+    val matchedCardExpenses = (data?.cardExpenses ?: emptyList()).filter {
         matchesQuery(it.name, it.category)
     }
-    val filteredDebts = (data?.debts ?: emptyList()).filter {
+    val matchedDebts = (data?.debts ?: emptyList()).filter {
         matchesQuery(it.name, it.category)
     }
+    val filteredFixedExpenses = matchedFixedExpenses.filter { matchesPayment(it.isPaid) }
+    val filteredVariableExpenses = matchedVariableExpenses.filter { matchesPayment(it.isPaid) }
+    val filteredCardExpenses = matchedCardExpenses.filter { matchesPayment(it.isPaid) }
+    val filteredDebts = matchedDebts.filter { matchesPayment(it.isPaid) }
+    val allMonthCardExpenses = data?.cardExpenses ?: emptyList()
     val fixedExpanded = !collapsedSections.contains(ExpenseSection.FIXED)
     val variableExpanded = !collapsedSections.contains(ExpenseSection.VARIABLE)
     val cardExpanded = !collapsedSections.contains(ExpenseSection.CARD)
     val debtExpanded = !collapsedSections.contains(ExpenseSection.DEBT)
+    val allCardPaid = allMonthCardExpenses.isNotEmpty() && allMonthCardExpenses.all { it.isPaid }
+    val anyCardPaid = allMonthCardExpenses.any { it.isPaid }
     val visibleTotalUYU =
         (if (fixedExpanded) filteredFixedExpenses.sumOf { it.amountUYU } else 0.0) +
         (if (variableExpanded) filteredVariableExpenses.filter { !it.isInUSD() }.sumOf { it.amountUYU } else 0.0) +
@@ -150,6 +186,16 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
         (if (cardExpanded) filteredCardExpenses.filter { it.isInUSD() }.sumOf { it.amountUSD } else 0.0) +
         (if (debtExpanded) filteredDebts.filter { it.isInUSD() }.sumOf { it.amountUSD } else 0.0)
     val visibleTotalCalculated = visibleTotalUYU + (visibleTotalUSD * cardRate)
+    val paidTotalCalculated =
+        (if (fixedExpanded) matchedFixedExpenses.filter { it.isPaid }.sumOf { it.amountUYU } else 0.0) +
+        (if (variableExpanded) matchedVariableExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
+        (if (cardExpanded) matchedCardExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
+        (if (debtExpanded) matchedDebts.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0)
+    val pendingTotalCalculated =
+        (if (fixedExpanded) matchedFixedExpenses.filter { !it.isPaid }.sumOf { it.amountUYU } else 0.0) +
+        (if (variableExpanded) matchedVariableExpenses.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
+        (if (cardExpanded) matchedCardExpenses.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
+        (if (debtExpanded) matchedDebts.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0)
 
     fun toggleSection(section: ExpenseSection) {
         collapsedSections = if (collapsedSections.contains(section)) {
@@ -203,6 +249,26 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                         label = { Text(stringResource(R.string.expenses_search_label)) },
                         singleLine = true
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = paymentFilter == PaymentFilter.ALL,
+                            onClick = { paymentFilter = PaymentFilter.ALL },
+                            label = { Text(stringResource(R.string.common_filter_all)) }
+                        )
+                        FilterChip(
+                            selected = paymentFilter == PaymentFilter.PENDING,
+                            onClick = { paymentFilter = PaymentFilter.PENDING },
+                            label = { Text(stringResource(R.string.common_filter_pending)) }
+                        )
+                        FilterChip(
+                            selected = paymentFilter == PaymentFilter.PAID,
+                            onClick = { paymentFilter = PaymentFilter.PAID },
+                            label = { Text(stringResource(R.string.common_filter_paid)) }
+                        )
+                    }
                     if (!isReadOnly && selectedExpenseKeys.isNotEmpty()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -216,8 +282,7 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                             )
                             TextButton(
                                 onClick = {
-                                    viewModel.deleteSelected(selectedExpenseKeys)
-                                    selectedExpenseKeys = emptySet()
+                                    deleteRequest = ExpenseDeleteRequest.Bulk(selectedExpenseKeys)
                                 }
                             ) {
                                 Text(stringResource(R.string.action_delete_selected))
@@ -251,6 +316,14 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                         label = stringResource(R.string.expenses_filtered_total),
                         value = visibleTotalCalculated.formatUYU()
                     )
+                    SummaryRowCompact(
+                        label = stringResource(R.string.expenses_paid_total),
+                        value = paidTotalCalculated.formatUYU()
+                    )
+                    SummaryRowCompact(
+                        label = stringResource(R.string.expenses_pending_total),
+                        value = pendingTotalCalculated.formatUYU()
+                    )
                 }
             }
 
@@ -271,8 +344,9 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                         selected = selectedExpenseKeys.contains(selectionKey),
                         selectionMode = selectedExpenseKeys.isNotEmpty(),
                         onToggleSelection = { toggleSelection(selectionKey) },
+                        onTogglePaid = { viewModel.setFixedPaid(expense.id, it) },
                         onEdit = { editFixed = expense },
-                        onDelete = { viewModel.deleteFixed(expense.id) }
+                        onDelete = { deleteRequest = ExpenseDeleteRequest.Fixed(expense) }
                     )
                 }
             }
@@ -298,8 +372,9 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                         selected = selectedExpenseKeys.contains(selectionKey),
                         selectionMode = selectedExpenseKeys.isNotEmpty(),
                         onToggleSelection = { toggleSelection(selectionKey) },
+                        onTogglePaid = { viewModel.setVariableExpensePaid(expense.id, it) },
                         onEdit = { editVariable = expense },
-                        onDelete = { viewModel.deleteVariableExpense(expense.id) }
+                        onDelete = { deleteRequest = ExpenseDeleteRequest.Variable(expense) }
                     )
                 }
             }
@@ -307,10 +382,14 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
             item { Spacer(Modifier.height(16.dp)); HorizontalDivider() }
 
             item {
-                SectionHeader(
+                CardSectionHeader(
                     title = stringResource(R.string.expenses_section_card),
                     total = filteredCardExpenses.sumOf { it.totalUYU(cardRate) }.formatUYU(),
                     expanded = cardExpanded,
+                    showPaymentToggle = (!isReadOnly && allMonthCardExpenses.isNotEmpty()) || (isReadOnly && anyCardPaid),
+                    paymentChecked = allCardPaid,
+                    paymentEnabled = !isReadOnly && allMonthCardExpenses.isNotEmpty(),
+                    onPaymentCheckedChange = { checked -> viewModel.setAllCardPaid(checked) },
                     onClick = { toggleSection(ExpenseSection.CARD) }
                 )
             }
@@ -324,8 +403,9 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                         selected = selectedExpenseKeys.contains(selectionKey),
                         selectionMode = selectedExpenseKeys.isNotEmpty(),
                         onToggleSelection = { toggleSelection(selectionKey) },
+                        onTogglePaid = { viewModel.setCardPaid(expense.id, it) },
                         onEdit = { editCard = expense },
-                        onDelete = { viewModel.deleteCard(expense.id) }
+                        onDelete = { deleteRequest = ExpenseDeleteRequest.Card(expense) }
                     )
                 }
             }
@@ -350,8 +430,9 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
                         selected = selectedExpenseKeys.contains(selectionKey),
                         selectionMode = selectedExpenseKeys.isNotEmpty(),
                         onToggleSelection = { toggleSelection(selectionKey) },
+                        onTogglePaid = { viewModel.setDebtPaid(debt.id, it) },
                         onEdit = { editDebt = debt },
-                        onDelete = { viewModel.deleteDebt(debt.id) }
+                        onDelete = { deleteRequest = ExpenseDeleteRequest.Debt(debt) }
                     )
                 }
             }
@@ -398,6 +479,81 @@ fun ExpensesScreen(yearMonth: String, viewModel: ExpensesViewModel = hiltViewMod
             onDismiss = { showAddDebt = false; editDebt = null }
         )
     }
+    deleteRequest?.let { request ->
+        val allowFutureDelete = when (request) {
+            is ExpenseDeleteRequest.Fixed -> true
+            is ExpenseDeleteRequest.Card -> request.expense.kind != CardExpenseKind.PUNCTUAL
+            is ExpenseDeleteRequest.Debt -> true
+            else -> false
+        }
+        val itemName = when (request) {
+            is ExpenseDeleteRequest.Fixed -> request.expense.name
+            is ExpenseDeleteRequest.Variable -> request.expense.name
+            is ExpenseDeleteRequest.Card -> request.expense.name
+            is ExpenseDeleteRequest.Debt -> request.debt.name
+            is ExpenseDeleteRequest.Bulk -> ""
+        }.ifBlank { stringResource(R.string.expenses_delete_item_fallback) }
+        val message = when (request) {
+            is ExpenseDeleteRequest.Bulk -> stringResource(R.string.delete_confirm_selected)
+            else -> stringResource(R.string.delete_confirm_named, itemName)
+        }
+        DeleteConfirmationDialog(
+            message = message,
+            allowFutureDelete = allowFutureDelete,
+            onConfirm = { deleteFuture ->
+                when (request) {
+                    is ExpenseDeleteRequest.Fixed -> viewModel.deleteFixed(request.expense.id, deleteFuture)
+                    is ExpenseDeleteRequest.Variable -> viewModel.deleteVariableExpense(request.expense.id)
+                    is ExpenseDeleteRequest.Card -> viewModel.deleteCard(request.expense.id, deleteFuture)
+                    is ExpenseDeleteRequest.Debt -> viewModel.deleteDebt(request.debt.id, deleteFuture)
+                    is ExpenseDeleteRequest.Bulk -> {
+                        viewModel.deleteSelected(request.keys)
+                        selectedExpenseKeys = emptySet()
+                    }
+                }
+                deleteRequest = null
+            },
+            onDismiss = { deleteRequest = null }
+        )
+    }
+}
+
+@Composable
+private fun DeleteConfirmationDialog(
+    message: String,
+    allowFutureDelete: Boolean,
+    onConfirm: (Boolean) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var deleteFuture by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.delete_confirm_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(message)
+                if (allowFutureDelete) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(
+                            checked = deleteFuture,
+                            onCheckedChange = { deleteFuture = it }
+                        )
+                        Text(stringResource(R.string.delete_confirm_future))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(deleteFuture) }) {
+                Text(stringResource(R.string.action_delete))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
+    )
 }
 
 @Composable
@@ -413,6 +569,95 @@ private fun SummaryRowCompact(label: String, value: String) {
 }
 
 @Composable
+private fun CardSectionHeader(
+    title: String,
+    total: String,
+    expanded: Boolean,
+    showPaymentToggle: Boolean,
+    paymentChecked: Boolean,
+    paymentEnabled: Boolean,
+    onPaymentCheckedChange: (Boolean) -> Unit,
+    onClick: () -> Unit
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val titleMaxWidth = if (showPaymentToggle) maxWidth * 0.34f else maxWidth * 0.55f
+        val totalMinWidth = if (showPaymentToggle) 96.dp else 88.dp
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.widthIn(max = titleMaxWidth),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+            if (showPaymentToggle) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.expenses_card_paid_label),
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1
+                    )
+                    Checkbox(
+                        checked = paymentChecked,
+                        onCheckedChange = if (paymentEnabled) {
+                            { checked: Boolean -> onPaymentCheckedChange(checked) }
+                        } else {
+                            null
+                        }
+                    )
+                }
+            }
+            Text(
+                text = total,
+                modifier = Modifier.widthIn(min = totalMinWidth),
+                style = MaterialTheme.typography.titleSmall,
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                overflow = TextOverflow.Clip
+            )
+        }
+    }
+}
+
+private fun paymentRowColor(
+    selected: Boolean,
+    isPaid: Boolean,
+    surface: androidx.compose.ui.graphics.Color,
+    selectedColor: androidx.compose.ui.graphics.Color,
+    paidColor: androidx.compose.ui.graphics.Color
+): androidx.compose.ui.graphics.Color {
+    return when {
+        selected -> selectedColor
+        isPaid -> paidColor
+        else -> surface
+    }
+}
+
+@Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun FixedExpenseRow(
     expense: FixedExpense,
@@ -420,16 +665,24 @@ private fun FixedExpenseRow(
     selected: Boolean,
     selectionMode: Boolean,
     onToggleSelection: () -> Unit,
+    onTogglePaid: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val containerColor = paymentRowColor(
+        selected = selected,
+        isPaid = expense.isPaid,
+        surface = MaterialTheme.colorScheme.surface,
+        selectedColor = MaterialTheme.colorScheme.secondaryContainer,
+        paidColor = PaidBackgroundColor
+    )
     ListItem(
         modifier = Modifier.combinedClickable(
             onClick = { if (!readOnly && selectionMode) onToggleSelection() },
             onLongClick = { if (!readOnly) onToggleSelection() }
         ),
         colors = ListItemDefaults.colors(
-            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+            containerColor = containerColor
         ),
         leadingContent = {
             Icon(
@@ -450,6 +703,12 @@ private fun FixedExpenseRow(
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(expense.amountUYU.formatUYU(), fontWeight = FontWeight.Medium)
+                if (!selectionMode) {
+                    Checkbox(
+                        checked = expense.isPaid,
+                        onCheckedChange = if (readOnly) null else onTogglePaid
+                    )
+                }
                 if (!readOnly && !selectionMode) {
                     IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp)) }
                     IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.action_delete), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }
@@ -470,16 +729,24 @@ private fun MoneyEntryRow(
     selected: Boolean,
     selectionMode: Boolean,
     onToggleSelection: () -> Unit,
+    onTogglePaid: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val containerColor = paymentRowColor(
+        selected = selected,
+        isPaid = entry.isPaid,
+        surface = MaterialTheme.colorScheme.surface,
+        selectedColor = MaterialTheme.colorScheme.secondaryContainer,
+        paidColor = PaidBackgroundColor
+    )
     ListItem(
         modifier = Modifier.combinedClickable(
             onClick = { if (!readOnly && selectionMode) onToggleSelection() },
             onLongClick = { if (!readOnly) onToggleSelection() }
         ),
         colors = ListItemDefaults.colors(
-            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+            containerColor = containerColor
         ),
         leadingContent = {
             Icon(
@@ -502,6 +769,12 @@ private fun MoneyEntryRow(
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(entry.totalUYU(exchangeRate).formatUYU(), fontWeight = FontWeight.Medium)
+                if (!selectionMode) {
+                    Checkbox(
+                        checked = entry.isPaid,
+                        onCheckedChange = if (readOnly) null else onTogglePaid
+                    )
+                }
                 if (!readOnly && !selectionMode) {
                     IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp)) }
                     IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.action_delete), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }
@@ -521,6 +794,7 @@ private fun CardExpenseRow(
     selected: Boolean,
     selectionMode: Boolean,
     onToggleSelection: () -> Unit,
+    onTogglePaid: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -529,13 +803,20 @@ private fun CardExpenseRow(
         CardExpenseKind.INSTALLMENT -> stringResource(R.string.card_installment_label, expense.currentInstallment, expense.totalInstallments)
         else -> stringResource(R.string.card_kind_punctual)
     }
+    val containerColor = paymentRowColor(
+        selected = selected,
+        isPaid = expense.isPaid,
+        surface = MaterialTheme.colorScheme.surface,
+        selectedColor = MaterialTheme.colorScheme.secondaryContainer,
+        paidColor = PaidBackgroundColor
+    )
     ListItem(
         modifier = Modifier.combinedClickable(
             onClick = { if (!readOnly && selectionMode) onToggleSelection() },
             onLongClick = { if (!readOnly) onToggleSelection() }
         ),
         colors = ListItemDefaults.colors(
-            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+            containerColor = containerColor
         ),
         leadingContent = {
             Icon(
@@ -557,6 +838,12 @@ private fun CardExpenseRow(
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(expense.totalUYU(cardRate).formatUYU(), fontWeight = FontWeight.Medium)
+                if (!selectionMode) {
+                    Checkbox(
+                        checked = expense.isPaid,
+                        onCheckedChange = if (readOnly) null else onTogglePaid
+                    )
+                }
                 if (!readOnly && !selectionMode) {
                     IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp)) }
                     IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.action_delete), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }
@@ -576,16 +863,24 @@ private fun DebtRow(
     selected: Boolean,
     selectionMode: Boolean,
     onToggleSelection: () -> Unit,
+    onTogglePaid: (Boolean) -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val containerColor = paymentRowColor(
+        selected = selected,
+        isPaid = debt.isPaid,
+        surface = MaterialTheme.colorScheme.surface,
+        selectedColor = MaterialTheme.colorScheme.secondaryContainer,
+        paidColor = PaidBackgroundColor
+    )
     ListItem(
         modifier = Modifier.combinedClickable(
             onClick = { if (!readOnly && selectionMode) onToggleSelection() },
             onLongClick = { if (!readOnly) onToggleSelection() }
         ),
         colors = ListItemDefaults.colors(
-            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+            containerColor = containerColor
         ),
         leadingContent = {
             Icon(
@@ -606,6 +901,12 @@ private fun DebtRow(
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(debt.totalUYU(exchangeRate).formatUYU(), fontWeight = FontWeight.Medium)
+                if (!selectionMode) {
+                    Checkbox(
+                        checked = debt.isPaid,
+                        onCheckedChange = if (readOnly) null else onTogglePaid
+                    )
+                }
                 if (!readOnly && !selectionMode) {
                     IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp)) }
                     IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.action_delete), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }
@@ -646,7 +947,16 @@ private fun FixedExpenseDialog(
             Button(onClick = {
                 val resolvedCategory = category.trim()
                 if (resolvedCategory.isNotBlank()) onCreateCategory(resolvedCategory)
-                onConfirm(FixedExpense(id = initial?.id ?: UUID.randomUUID().toString(), name = name, category = resolvedCategory, amountUYU = amount.replace(",", ".").toDoubleOrNull() ?: 0.0, isPinned = true))
+                onConfirm(
+                    FixedExpense(
+                        id = initial?.id ?: UUID.randomUUID().toString(),
+                        name = name,
+                        category = resolvedCategory,
+                        amountUYU = amount.replace(",", ".").toDoubleOrNull() ?: 0.0,
+                        isPinned = true,
+                        isPaid = initial?.isPaid ?: false
+                    )
+                )
             }) { Text(stringResource(R.string.action_save)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
@@ -710,7 +1020,8 @@ private fun MoneyEntryDialog(
                         amountUSD = if (isUSD) parsed else 0.0,
                         amountUYU = if (isUSD) 0.0 else parsed,
                         isUSD = isUSD,
-                        currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU
+                        currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
+                        isPaid = initial?.isPaid ?: false
                     ),
                     applyFuture
                 )
@@ -782,7 +1093,8 @@ private fun CardExpenseDialog(
                         currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
                         kind = kind,
                         totalInstallments = if (kind == CardExpenseKind.INSTALLMENT) totalInst.toIntOrNull() ?: 1 else 1,
-                        currentInstallment = if (kind == CardExpenseKind.INSTALLMENT) currentInst.toIntOrNull() ?: 1 else 1
+                        currentInstallment = if (kind == CardExpenseKind.INSTALLMENT) currentInst.toIntOrNull() ?: 1 else 1,
+                        isPaid = initial?.isPaid ?: false
                     )
                 )
             }) { Text(stringResource(R.string.action_save)) }
@@ -864,7 +1176,8 @@ private fun DebtDialog(
                         isUSD = isUSD,
                         currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
                         totalInstallments = totalInst.toIntOrNull() ?: 1,
-                        currentInstallment = currentInst.toIntOrNull() ?: 1
+                        currentInstallment = currentInst.toIntOrNull() ?: 1,
+                        isPaid = initial?.isPaid ?: false
                     )
                 )
             }) { Text(stringResource(R.string.action_save)) }

@@ -1,6 +1,7 @@
 package com.finanzasfamiliares.ui.screens.summary
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -50,7 +51,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -97,21 +97,20 @@ fun SummaryScreen(
     val totalObligationsUYU = data?.totalObligationsInUYU(incomeCurrency) ?: 0.0
     val margin = data?.marginInUYU(incomeCurrency) ?: 0.0
 
-    LaunchedEffect(currentYMString) {
-        onYearMonthChange(currentYMString)
-        viewModel.ensureMonthExists()
-    }
-
     var showIncomeDialog by remember { mutableStateOf(false) }
     var showRateDialog by remember { mutableStateOf(false) }
     var showVariableIncomeDialog by remember { mutableStateOf(false) }
     var showGenerateDialog by remember { mutableStateOf(false) }
     var showMonthPickerDialog by remember { mutableStateOf(false) }
     var editingVariableIncome by remember { mutableStateOf<MoneyEntry?>(null) }
+    var deletingVariableIncome by remember { mutableStateOf<MoneyEntry?>(null) }
     var variableIncomeExpanded by remember(currentYMString) { mutableStateOf(false) }
     var navigationDirection by remember { mutableStateOf(1) }
     val monthFormatter = remember { DateTimeFormatter.ofPattern("yyyy-MM") }
     val selectedYearMonth = remember(currentYMString) { YearMonth.parse(currentYMString, monthFormatter) }
+    LaunchedEffect(currentYMString) {
+        onYearMonthChange(currentYMString)
+    }
     val goPrevious = {
         navigationDirection = -1
         viewModel.goToPreviousMonth()
@@ -124,7 +123,7 @@ fun SummaryScreen(
     Box(
         Modifier
             .fillMaxSize()
-            .pointerInput(currentYMString) {
+            .pointerInput(Unit) {
                 var accumulatedDrag = 0f
                 detectHorizontalDragGestures(
                     onHorizontalDrag = { change, dragAmount ->
@@ -142,24 +141,10 @@ fun SummaryScreen(
                 )
             }
     ) {
-    AnimatedContent(
-        targetState = currentYMString,
-        transitionSpec = {
-            if (navigationDirection >= 0) {
-                slideInHorizontally { it / 3 } + fadeIn() togetherWith
-                    slideOutHorizontally { -it / 3 } + fadeOut()
-            } else {
-                slideInHorizontally { -it / 3 } + fadeIn() togetherWith
-                    slideOutHorizontally { it / 3 } + fadeOut()
-            }
-        },
-        label = "monthTransition"
-    ) { animatedMonthKey ->
-    key(animatedMonthKey) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 80.dp)
-    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 80.dp)
+        ) {
         item {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -171,7 +156,27 @@ fun SummaryScreen(
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     TextButton(onClick = { showMonthPickerDialog = true }) {
-                        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        AnimatedContent(
+                            targetState = label,
+                            transitionSpec = {
+                                val incomingOffset = { width: Int ->
+                                    if (navigationDirection >= 0) width / 3 else -width / 3
+                                }
+                                val outgoingOffset = { width: Int ->
+                                    if (navigationDirection >= 0) -width / 3 else width / 3
+                                }
+                                (slideInHorizontally(initialOffsetX = incomingOffset) + fadeIn())
+                                    .togetherWith(slideOutHorizontally(targetOffsetX = outgoingOffset) + fadeOut())
+                                    .using(SizeTransform(clip = false))
+                            },
+                            label = "summary_month_label"
+                        ) { targetLabel ->
+                            Text(
+                                text = targetLabel,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                     if (!isCurrentMonth) {
                         FilterChip(
@@ -225,7 +230,8 @@ fun SummaryScreen(
             Spacer(Modifier.height(8.dp))
             HorizontalDivider()
 
-            SummaryRow(stringResource(R.string.summary_exchange_rate), "$ ${"%.2f".format(data?.exchangeRate ?: 0.0)}")
+            SummaryRow(stringResource(R.string.config_base_rate_label), "$ ${"%.2f".format(data?.exchangeRate ?: 0.0)}")
+            SummaryRow(stringResource(R.string.config_card_offset_label), "$ ${"%.2f".format(data?.cardExchangeRate ?: 0.0)}")
             TextButton(onClick = { showRateDialog = true }, Modifier.padding(start = 8.dp)) {
                 Text(stringResource(R.string.summary_change_rate), style = MaterialTheme.typography.labelSmall)
             }
@@ -270,7 +276,7 @@ fun SummaryScreen(
                     titleFallback = stringResource(R.string.summary_variable_income_item_fallback),
                     readOnly = false,
                     onEdit = { editingVariableIncome = income },
-                    onDelete = { viewModel.deleteVariableIncome(income.id) }
+                    onDelete = { deletingVariableIncome = income }
                 )
             }
         }
@@ -293,8 +299,6 @@ fun SummaryScreen(
         }
     }
     }
-    }
-    }
 
     if (showIncomeDialog) {
         PrimaryIncomeDialog(
@@ -309,14 +313,15 @@ fun SummaryScreen(
         )
     }
     if (showRateDialog) {
-        ExchangeRateDialog(
+        ExchangeSettingsDialog(
             title = stringResource(R.string.dialog_rate_title),
-            label = stringResource(R.string.dialog_rate_label),
-            initialValue = data?.exchangeRate ?: 0.0,
-            prefix = stringResource(R.string.prefix_uyu),
+            purchaseLabel = stringResource(R.string.config_base_rate_label),
+            saleLabel = stringResource(R.string.config_card_offset_label),
+            initialPurchaseValue = data?.exchangeRate ?: 0.0,
+            initialSaleValue = data?.cardExchangeRate ?: 0.0,
             allowApplyToFuture = isFutureMonth,
-            onConfirm = { amount, apply ->
-                viewModel.updateExchangeRate(amount, apply)
+            onConfirm = { purchase, sale, apply ->
+                viewModel.updateExchangeSettings(purchase, sale, apply)
                 showRateDialog = false
             },
             onDismiss = { showRateDialog = false }
@@ -360,6 +365,33 @@ fun SummaryScreen(
     }
     if (isGenerating) {
         LoadingDialog(stringResource(R.string.summary_generating_months))
+    }
+    deletingVariableIncome?.let { income ->
+        AlertDialog(
+            onDismissRequest = { deletingVariableIncome = null },
+            title = { Text(stringResource(R.string.delete_confirm_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.delete_confirm_named,
+                        income.name.ifBlank { stringResource(R.string.summary_variable_income_item_fallback) }
+                    )
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.deleteVariableIncome(income.id)
+                    deletingVariableIncome = null
+                }) {
+                    Text(stringResource(R.string.action_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingVariableIncome = null }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
     }
 }
 
@@ -601,23 +633,42 @@ private fun MonthPickerDialog(
 }
 
 @Composable
-private fun ExchangeRateDialog(
+private fun ExchangeSettingsDialog(
     title: String,
-    label: String,
-    initialValue: Double,
-    prefix: String,
+    purchaseLabel: String,
+    saleLabel: String,
+    initialPurchaseValue: Double,
+    initialSaleValue: Double,
     allowApplyToFuture: Boolean,
-    onConfirm: (Double, Boolean) -> Unit,
+    onConfirm: (Double, Double, Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var value by remember { mutableStateOf(if (initialValue > 0) initialValue.toInputAmount() else "") }
+    var purchaseValue by remember {
+        mutableStateOf(if (initialPurchaseValue > 0) initialPurchaseValue.toInputAmount() else "")
+    }
+    var saleValue by remember {
+        mutableStateOf(if (initialSaleValue > 0) initialSaleValue.toInputAmount() else "")
+    }
     var applyToFuture by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(value = value, onValueChange = { value = it }, label = { Text(label) }, prefix = { Text(prefix) }, singleLine = true)
+                OutlinedTextField(
+                    value = purchaseValue,
+                    onValueChange = { purchaseValue = it },
+                    label = { Text(purchaseLabel) },
+                    prefix = { Text(stringResource(R.string.prefix_uyu)) },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = saleValue,
+                    onValueChange = { saleValue = it },
+                    label = { Text(saleLabel) },
+                    prefix = { Text(stringResource(R.string.prefix_uyu)) },
+                    singleLine = true
+                )
                 if (allowApplyToFuture) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = applyToFuture, onCheckedChange = { applyToFuture = it })
@@ -626,7 +677,17 @@ private fun ExchangeRateDialog(
                 }
             }
         },
-        confirmButton = { Button(onClick = { onConfirm(value.replace(",", ".").toDoubleOrNull() ?: 0.0, applyToFuture) }) { Text(stringResource(R.string.action_save)) } },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val purchase = purchaseValue.replace(",", ".").toDoubleOrNull() ?: 0.0
+                    val sale = saleValue.replace(",", ".").toDoubleOrNull() ?: purchase
+                    onConfirm(purchase, sale, applyToFuture)
+                }
+            ) {
+                Text(stringResource(R.string.action_save))
+            }
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
     )
 }

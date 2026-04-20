@@ -23,6 +23,8 @@ class SummaryViewModel @Inject constructor(private val repo: FinanceRepository) 
     private val whileSubscribed = SharingStarted.WhileSubscribed(5_000)
     private val config = repo.observeConfig()
         .stateIn(viewModelScope, whileSubscribed, com.finanzasfamiliares.data.model.FamilyConfig())
+    private val availableMonthKeys = repo.observeAvailableMonths()
+        .stateIn(viewModelScope, whileSubscribed, emptyList())
     private val _isGenerating = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
 
@@ -40,13 +42,12 @@ class SummaryViewModel @Inject constructor(private val repo: FinanceRepository) 
     }.stateIn(viewModelScope, whileSubscribed, null)
 
     val availableMonths: StateFlow<List<YearMonth>> =
-        repo.observeAvailableMonths()
-            .combine(_currentYM) { monthKeys, currentYm ->
-                (monthKeys + currentYm.format(fmt))
-                    .distinct()
-                    .map { YearMonth.parse(it, fmt) }
-                    .sorted()
-            }
+        availableMonthKeys.combine(_currentYM) { monthKeys, currentYm ->
+            (monthKeys + currentYm.format(fmt))
+                .distinct()
+                .map { YearMonth.parse(it, fmt) }
+                .sorted()
+        }
             .stateIn(viewModelScope, whileSubscribed, listOf(YearMonth.now()))
 
     val isCurrentMonth: StateFlow<Boolean> = _currentYM.map { it == YearMonth.now() }
@@ -55,31 +56,47 @@ class SummaryViewModel @Inject constructor(private val repo: FinanceRepository) 
     val isFutureMonth: StateFlow<Boolean> = _currentYM.map { it > YearMonth.now() }
         .stateIn(viewModelScope, whileSubscribed, false)
 
-    fun goToPreviousMonth() { _currentYM.value = _currentYM.value.minusMonths(1) }
+    init {
+        ensureMonthExistsIfNeeded(_currentYM.value)
+    }
+
+    fun goToPreviousMonth() {
+        _currentYM.value = _currentYM.value.minusMonths(1)
+    }
 
     fun goToNextMonth() {
         val next = _currentYM.value.plusMonths(1)
         val limit = config.value.planningThroughYearMonth.takeIf { it.isNotBlank() }?.let {
             YearMonth.parse(it, fmt)
         } ?: YearMonth.now()
-        if (next <= maxOf(YearMonth.now(), limit)) _currentYM.value = next
+        if (next <= maxOf(YearMonth.now(), limit)) {
+            _currentYM.value = next
+            ensureMonthExistsIfNeeded(next)
+        }
     }
 
     fun goToMonth(target: YearMonth) {
         _currentYM.value = target
+        ensureMonthExistsIfNeeded(target)
     }
 
-    fun ensureMonthExists() {
+    private fun ensureMonthExistsIfNeeded(target: YearMonth) {
+        if (target < YearMonth.now()) return
         viewModelScope.launch {
-            val key = _currentYM.value.format(fmt)
-            if (_currentYM.value < YearMonth.now() && repo.getMonth(key) == null) return@launch
+            val key = target.format(fmt)
+            if (key in availableMonthKeys.value) return@launch
             repo.ensureMonthDocument(key)
         }
     }
 
-    fun updateExchangeRate(rate: Double, applyToFuture: Boolean = false) {
+    fun updateExchangeSettings(rate: Double, cardRate: Double, applyToFuture: Boolean = false) {
         viewModelScope.launch {
-            repo.updateExchangeRate(_currentYM.value.format(fmt), rate, applyToFuture)
+            repo.updateMonthExchangeSettings(
+                yearMonth = _currentYM.value.format(fmt),
+                rate = rate,
+                cardExchangeRate = cardRate,
+                applyToFuture = applyToFuture
+            )
         }
     }
 
