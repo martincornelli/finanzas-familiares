@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -92,6 +93,7 @@ import com.finanzasfamiliares.ui.components.MonthHeader
 import com.finanzasfamiliares.ui.components.MonthSwipeContainer
 import com.finanzasfamiliares.ui.components.ReadOnlyBanner
 import com.finanzasfamiliares.ui.components.SectionHeader
+import com.finanzasfamiliares.ui.components.SelectionActionBar
 import com.finanzasfamiliares.ui.components.clearZeroOnFocus
 import com.finanzasfamiliares.ui.components.formatUSD
 import com.finanzasfamiliares.ui.components.formatUYU
@@ -106,11 +108,19 @@ private enum class ExpenseSection {
     FIXED, VARIABLE, CARD, DEBT
 }
 
+private val DefaultCollapsedExpenseSections = setOf(
+    ExpenseSection.FIXED,
+    ExpenseSection.VARIABLE,
+    ExpenseSection.CARD,
+    ExpenseSection.DEBT
+)
+
 private enum class PaymentFilter {
     ALL, PENDING, PAID
 }
 
 private val PaidBackgroundColor = Color(0xFFE0F4E5)
+private val PaidExpenseContentColor = Color(0xFF173D2B)
 
 private sealed interface ExpenseDeleteRequest {
     data class Fixed(val expense: FixedExpense) : ExpenseDeleteRequest
@@ -191,6 +201,7 @@ fun ExpensesScreen(
     canGoNextMonth: Boolean = false,
     onGoPreviousMonth: () -> Unit = {},
     onGoNextMonth: () -> Unit = {},
+    headerPinned: Boolean = true,
     headerContent: @Composable () -> Unit = {},
     viewModel: ExpensesViewModel = hiltViewModel()
 ) {
@@ -210,7 +221,7 @@ fun ExpensesScreen(
     var deleteRequest by remember { mutableStateOf<ExpenseDeleteRequest?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var paymentFilter by remember { mutableStateOf(PaymentFilter.ALL) }
-    var collapsedSections by remember { mutableStateOf(setOf<ExpenseSection>()) }
+    var collapsedSections by remember { mutableStateOf(DefaultCollapsedExpenseSections) }
     var selectedExpenseKeys by remember { mutableStateOf(setOf<String>()) }
     val cardRate = data?.cardExchangeRate ?: 0.0
     val normalizedQuery = searchQuery.trim()
@@ -540,6 +551,32 @@ fun ExpensesScreen(
             (if (cardExpanded) matchedCardExpenses.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
             (if (debtExpanded) matchedDebts.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0)
     }
+    val fixedSectionTotal = remember(filteredFixedExpenses, cardRate) {
+        filteredFixedExpenses.sumOf { it.totalUYU(cardRate) }.formatUYU()
+    }
+    val variableSectionTotal = remember(filteredVariableExpenses, cardRate) {
+        filteredVariableExpenses.sumOf { it.totalUYU(cardRate) }.formatUYU()
+    }
+    val cardSectionTotal = remember(filteredCardExpenses, cardRate) {
+        filteredCardExpenses.sumOf { it.totalUYU(cardRate) }.formatUYU()
+    }
+    val debtSectionTotal = remember(filteredDebts, cardRate) {
+        filteredDebts.sumOf { it.totalUYU(cardRate) }.formatUYU()
+    }
+    val selectableExpenseKeys = remember(
+        filteredFixedExpenses,
+        filteredVariableExpenses,
+        filteredCardExpenses,
+        filteredDebts
+    ) {
+        buildSet {
+            filteredFixedExpenses.forEach { add("fixed:${it.id}") }
+            filteredVariableExpenses.forEach { add("variable:${it.id}") }
+            filteredCardExpenses.forEach { add("card:${it.id}") }
+            filteredDebts.forEach { add("debt:${it.id}") }
+        }
+    }
+    val canSelectMoreExpenses = selectableExpenseKeys.any { it !in selectedExpenseKeys }
 
     fun toggleSection(section: ExpenseSection) {
         collapsedSections = if (collapsedSections.contains(section)) {
@@ -584,15 +621,38 @@ fun ExpensesScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            LazyColumn(Modifier.fillMaxSize()) {
-            if (isReadOnly) item { ReadOnlyBanner() }
+            Column(Modifier.fillMaxSize()) {
+                if (headerPinned) {
+                    headerContent()
+                }
+                if (!isReadOnly && selectedExpenseKeys.isNotEmpty()) {
+                    SelectionActionBar(
+                        selectedCount = selectedExpenseKeys.size,
+                        canSelectAll = canSelectMoreExpenses,
+                        onSelectAll = {
+                            collapsedSections = emptySet()
+                            selectedExpenseKeys = selectableExpenseKeys
+                        },
+                        onClearSelection = { selectedExpenseKeys = emptySet() },
+                        onDeleteSelected = {
+                            deleteRequest = ExpenseDeleteRequest.Bulk(selectedExpenseKeys)
+                        }
+                    )
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 80.dp)
+                ) {
+            if (isReadOnly) item(contentType = "read_only") { ReadOnlyBanner() }
 
-            item {
+            item(contentType = "controls") {
                 Column(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    headerContent()
+                    if (!headerPinned) {
+                        headerContent()
+                    }
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
@@ -619,26 +679,6 @@ fun ExpensesScreen(
                             onClick = { paymentFilter = PaymentFilter.PAID },
                             label = { Text(stringResource(R.string.common_filter_paid)) }
                         )
-                    }
-                    if (!isReadOnly && selectedExpenseKeys.isNotEmpty()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                stringResource(R.string.selection_count, selectedExpenseKeys.size),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            TextButton(
-                                onClick = {
-                                    deleteRequest = ExpenseDeleteRequest.Bulk(selectedExpenseKeys)
-                                }
-                            ) {
-                                Text(stringResource(R.string.action_delete_selected))
-                            }
-                        }
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -684,10 +724,10 @@ fun ExpensesScreen(
                 }
             }
 
-            item {
+            item(contentType = "fixed_header") {
                 SectionHeader(
                     title = stringResource(R.string.expenses_section_fixed),
-                    total = filteredFixedExpenses.sumOf { it.totalUYU(cardRate) }.formatUYU(),
+                    total = fixedSectionTotal,
                     expanded = fixedExpanded,
                     onClick = { toggleSection(ExpenseSection.FIXED) }
                 )
@@ -709,12 +749,12 @@ fun ExpensesScreen(
                 }
             }
 
-            item { Spacer(Modifier.height(16.dp)); HorizontalDivider() }
+            item(contentType = "section_gap") { Spacer(Modifier.height(16.dp)); HorizontalDivider() }
 
-            item {
+            item(contentType = "variable_header") {
                 SectionHeader(
                     title = stringResource(R.string.expenses_section_variable),
-                    total = filteredVariableExpenses.sumOf { it.totalUYU(cardRate) }.formatUYU(),
+                    total = variableSectionTotal,
                     expanded = variableExpanded,
                     onClick = { toggleSection(ExpenseSection.VARIABLE) }
                 )
@@ -737,12 +777,12 @@ fun ExpensesScreen(
                 }
             }
 
-            item { Spacer(Modifier.height(16.dp)); HorizontalDivider() }
+            item(contentType = "section_gap") { Spacer(Modifier.height(16.dp)); HorizontalDivider() }
 
-            item {
+            item(contentType = "card_header") {
                 CardSectionHeader(
                     title = stringResource(R.string.expenses_section_card),
-                    total = filteredCardExpenses.sumOf { it.totalUYU(cardRate) }.formatUYU(),
+                    total = cardSectionTotal,
                     expanded = cardExpanded,
                     showPaymentToggle = (!isReadOnly && allMonthCardExpenses.isNotEmpty()) || (isReadOnly && anyCardPaid),
                     paymentChecked = allCardPaid,
@@ -768,12 +808,12 @@ fun ExpensesScreen(
                 }
             }
 
-            item { Spacer(Modifier.height(16.dp)); HorizontalDivider() }
+            item(contentType = "section_gap") { Spacer(Modifier.height(16.dp)); HorizontalDivider() }
 
-            item {
+            item(contentType = "debt_header") {
                 SectionHeader(
                     title = stringResource(R.string.expenses_section_debt),
-                    total = filteredDebts.sumOf { it.totalUYU(cardRate) }.formatUYU(),
+                    total = debtSectionTotal,
                     expanded = debtExpanded,
                     onClick = { toggleSection(ExpenseSection.DEBT) }
                 )
@@ -794,7 +834,7 @@ fun ExpensesScreen(
                     )
                 }
             }
-                item { Spacer(Modifier.height(80.dp)) }
+            }
             }
         }
     }
@@ -1077,6 +1117,27 @@ private fun paymentRowColor(
 }
 
 @Composable
+private fun paymentRowHeadlineColor(selected: Boolean, isPaid: Boolean): Color = when {
+    selected -> MaterialTheme.colorScheme.onSecondaryContainer
+    isPaid -> PaidExpenseContentColor
+    else -> MaterialTheme.colorScheme.onSurface
+}
+
+@Composable
+private fun paymentRowSupportingColor(selected: Boolean, isPaid: Boolean): Color = when {
+    selected -> MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.74f)
+    isPaid -> PaidExpenseContentColor.copy(alpha = 0.74f)
+    else -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@Composable
+private fun paymentRowAccentColor(selected: Boolean, isPaid: Boolean): Color = when {
+    selected -> MaterialTheme.colorScheme.onSecondaryContainer
+    isPaid -> PaidExpenseContentColor
+    else -> MaterialTheme.colorScheme.primary
+}
+
+@Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun FixedExpenseRow(
     expense: FixedExpense,
@@ -1096,19 +1157,26 @@ private fun FixedExpenseRow(
         selectedColor = MaterialTheme.colorScheme.secondaryContainer,
         paidColor = PaidBackgroundColor
     )
+    val headlineColor = paymentRowHeadlineColor(selected, expense.isPaid)
+    val supportingColor = paymentRowSupportingColor(selected, expense.isPaid)
+    val accentColor = paymentRowAccentColor(selected, expense.isPaid)
     ListItem(
         modifier = Modifier.combinedClickable(
             onClick = { if (!readOnly && selectionMode) onToggleSelection() },
             onLongClick = { if (!readOnly) onToggleSelection() }
         ),
         colors = ListItemDefaults.colors(
-            containerColor = containerColor
+            containerColor = containerColor,
+            headlineColor = headlineColor,
+            supportingColor = supportingColor,
+            leadingIconColor = accentColor,
+            trailingIconColor = headlineColor
         ),
         leadingContent = {
             Icon(
                 imageVector = categoryIconFor(expense.category),
                 contentDescription = expense.category.ifBlank { null },
-                tint = MaterialTheme.colorScheme.primary
+                tint = accentColor
             )
         },
         headlineContent = { Text(expense.name) },
@@ -1122,14 +1190,18 @@ private fun FixedExpenseRow(
                     Text(
                         "${expense.amountUSD.formatUSD()} x ${"%.2f".format(exchangeRate)}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline
+                        color = supportingColor
                     )
                 }
             }
         },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(expense.totalUYU(exchangeRate).formatUYU(), fontWeight = FontWeight.Medium)
+                Text(
+                    expense.totalUYU(exchangeRate).formatUYU(),
+                    fontWeight = FontWeight.Medium,
+                    color = headlineColor
+                )
                 if (!selectionMode) {
                     Checkbox(
                         checked = expense.isPaid,
@@ -1137,7 +1209,7 @@ private fun FixedExpenseRow(
                     )
                 }
                 if (!readOnly && !selectionMode) {
-                    IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp)) }
+                    IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp), tint = accentColor.copy(alpha = 0.74f)) }
                     IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.action_delete), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }
                 }
             }
@@ -1167,19 +1239,26 @@ private fun MoneyEntryRow(
         selectedColor = MaterialTheme.colorScheme.secondaryContainer,
         paidColor = PaidBackgroundColor
     )
+    val headlineColor = paymentRowHeadlineColor(selected, entry.isPaid)
+    val supportingColor = paymentRowSupportingColor(selected, entry.isPaid)
+    val accentColor = paymentRowAccentColor(selected, entry.isPaid)
     ListItem(
         modifier = Modifier.combinedClickable(
             onClick = { if (!readOnly && selectionMode) onToggleSelection() },
             onLongClick = { if (!readOnly) onToggleSelection() }
         ),
         colors = ListItemDefaults.colors(
-            containerColor = containerColor
+            containerColor = containerColor,
+            headlineColor = headlineColor,
+            supportingColor = supportingColor,
+            leadingIconColor = accentColor,
+            trailingIconColor = headlineColor
         ),
         leadingContent = {
             Icon(
                 imageVector = categoryIconFor(entry.category),
                 contentDescription = entry.category.ifBlank { null },
-                tint = MaterialTheme.colorScheme.primary
+                tint = accentColor
             )
         },
         headlineContent = { Text(entry.name.ifBlank { fallback }) },
@@ -1195,7 +1274,11 @@ private fun MoneyEntryRow(
         },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(entry.totalUYU(exchangeRate).formatUYU(), fontWeight = FontWeight.Medium)
+                Text(
+                    entry.totalUYU(exchangeRate).formatUYU(),
+                    fontWeight = FontWeight.Medium,
+                    color = headlineColor
+                )
                 if (!selectionMode) {
                     Checkbox(
                         checked = entry.isPaid,
@@ -1203,7 +1286,7 @@ private fun MoneyEntryRow(
                     )
                 }
                 if (!readOnly && !selectionMode) {
-                    IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp)) }
+                    IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp), tint = accentColor.copy(alpha = 0.74f)) }
                     IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.action_delete), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }
                 }
             }
@@ -1237,19 +1320,26 @@ private fun CardExpenseRow(
         selectedColor = MaterialTheme.colorScheme.secondaryContainer,
         paidColor = PaidBackgroundColor
     )
+    val headlineColor = paymentRowHeadlineColor(selected, expense.isPaid)
+    val supportingColor = paymentRowSupportingColor(selected, expense.isPaid)
+    val accentColor = paymentRowAccentColor(selected, expense.isPaid)
     ListItem(
         modifier = Modifier.combinedClickable(
             onClick = { if (!readOnly && selectionMode) onToggleSelection() },
             onLongClick = { if (!readOnly) onToggleSelection() }
         ),
         colors = ListItemDefaults.colors(
-            containerColor = containerColor
+            containerColor = containerColor,
+            headlineColor = headlineColor,
+            supportingColor = supportingColor,
+            leadingIconColor = accentColor,
+            trailingIconColor = headlineColor
         ),
         leadingContent = {
             Icon(
                 imageVector = categoryIconFor(expense.category),
                 contentDescription = expense.category.ifBlank { null },
-                tint = MaterialTheme.colorScheme.primary
+                tint = accentColor
             )
         },
         headlineContent = { Text(expense.name) },
@@ -1259,12 +1349,16 @@ private fun CardExpenseRow(
                     Text(expense.category, style = MaterialTheme.typography.labelSmall)
                 }
                 Text(supporting, style = MaterialTheme.typography.labelSmall)
-                if (expense.isInUSD()) Text("${expense.amountUSD.formatUSD()} x ${"%.2f".format(cardRate)}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                if (expense.isInUSD()) Text("${expense.amountUSD.formatUSD()} x ${"%.2f".format(cardRate)}", style = MaterialTheme.typography.labelSmall, color = supportingColor)
             }
         },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(expense.totalUYU(cardRate).formatUYU(), fontWeight = FontWeight.Medium)
+                Text(
+                    expense.totalUYU(cardRate).formatUYU(),
+                    fontWeight = FontWeight.Medium,
+                    color = headlineColor
+                )
                 if (!selectionMode) {
                     Checkbox(
                         checked = expense.isPaid,
@@ -1272,7 +1366,7 @@ private fun CardExpenseRow(
                     )
                 }
                 if (!readOnly && !selectionMode) {
-                    IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp)) }
+                    IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp), tint = accentColor.copy(alpha = 0.74f)) }
                     IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.action_delete), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }
                 }
             }
@@ -1301,19 +1395,26 @@ private fun DebtRow(
         selectedColor = MaterialTheme.colorScheme.secondaryContainer,
         paidColor = PaidBackgroundColor
     )
+    val headlineColor = paymentRowHeadlineColor(selected, debt.isPaid)
+    val supportingColor = paymentRowSupportingColor(selected, debt.isPaid)
+    val accentColor = paymentRowAccentColor(selected, debt.isPaid)
     ListItem(
         modifier = Modifier.combinedClickable(
             onClick = { if (!readOnly && selectionMode) onToggleSelection() },
             onLongClick = { if (!readOnly) onToggleSelection() }
         ),
         colors = ListItemDefaults.colors(
-            containerColor = containerColor
+            containerColor = containerColor,
+            headlineColor = headlineColor,
+            supportingColor = supportingColor,
+            leadingIconColor = accentColor,
+            trailingIconColor = headlineColor
         ),
         leadingContent = {
             Icon(
                 imageVector = categoryIconFor(debt.category),
                 contentDescription = debt.category.ifBlank { null },
-                tint = MaterialTheme.colorScheme.primary
+                tint = accentColor
             )
         },
         headlineContent = { Text(debt.name) },
@@ -1327,7 +1428,11 @@ private fun DebtRow(
         },
         trailingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(debt.totalUYU(exchangeRate).formatUYU(), fontWeight = FontWeight.Medium)
+                Text(
+                    debt.totalUYU(exchangeRate).formatUYU(),
+                    fontWeight = FontWeight.Medium,
+                    color = headlineColor
+                )
                 if (!selectionMode) {
                     Checkbox(
                         checked = debt.isPaid,
@@ -1335,7 +1440,7 @@ private fun DebtRow(
                     )
                 }
                 if (!readOnly && !selectionMode) {
-                    IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp)) }
+                    IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, stringResource(R.string.action_edit), Modifier.size(18.dp), tint = accentColor.copy(alpha = 0.74f)) }
                     IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, stringResource(R.string.action_delete), Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error) }
                 }
             }

@@ -1,6 +1,7 @@
 package com.finanzasfamiliares.ui.components
 
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,8 +11,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -170,6 +175,66 @@ fun ReadOnlyBanner() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SelectionActionBar(
+    selectedCount: Int,
+    canSelectAll: Boolean,
+    onSelectAll: () -> Unit,
+    onClearSelection: () -> Unit,
+    onDeleteSelected: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (selectedCount <= 0) return
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                stringResource(R.string.selection_count, selectedCount),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                TextButton(onClick = onSelectAll, enabled = canSelectAll) {
+                    Icon(Icons.Default.SelectAll, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text(stringResource(R.string.action_select_all))
+                }
+                TextButton(onClick = onClearSelection) {
+                    Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text(stringResource(R.string.action_clear_selection))
+                }
+                TextButton(
+                    onClick = onDeleteSelected,
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.size(6.dp))
+                    Text(stringResource(R.string.action_delete_selected))
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MonthNavigationHeader(
     currentMonth: YearMonth,
@@ -179,54 +244,89 @@ fun MonthNavigationHeader(
     canGoNext: Boolean,
     isCurrentMonth: Boolean,
     isGenerating: Boolean,
+    isHeaderPinned: Boolean = true,
     onGoPrevious: () -> Unit,
     onGoNext: () -> Unit,
     onGoToMonth: (YearMonth) -> Unit,
     onGoToCurrentMonth: () -> Unit,
     onGenerateMonths: (Int) -> Unit,
+    onToggleHeaderPinned: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var showGenerateDialog by remember { mutableStateOf(false) }
     var showMonthPickerDialog by remember { mutableStateOf(false) }
 
-    Row(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
-        IconButton(onClick = onGoPrevious, enabled = canGoPrevious) {
-            Icon(Icons.Default.ChevronLeft, contentDescription = stringResource(R.string.summary_prev_month_cd))
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            TextButton(onClick = { showMonthPickerDialog = true }) {
-                Text(
-                    text = monthLabel,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onGoPrevious, enabled = canGoPrevious) {
+                Icon(Icons.Default.ChevronLeft, contentDescription = stringResource(R.string.summary_prev_month_cd))
             }
-            if (!isCurrentMonth) {
-                FilterChip(
-                    selected = true,
-                    onClick = onGoToCurrentMonth,
-                    label = { Text(stringResource(R.string.summary_go_to_current_month)) },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.Today,
-                            contentDescription = null,
-                            modifier = Modifier.size(FilterChipDefaults.IconSize)
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                TextButton(onClick = { showMonthPickerDialog = true }) {
+                    Text(
+                        text = monthLabel,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (!isCurrentMonth) {
+                        AssistChip(
+                            onClick = onGoToCurrentMonth,
+                            label = { Text(stringResource(R.string.summary_go_to_current_month)) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Today,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(AssistChipDefaults.IconSize)
+                                )
+                            }
                         )
                     }
-                )
+                    AssistChip(
+                        onClick = { showGenerateDialog = true },
+                        enabled = !isGenerating,
+                        label = { Text(stringResource(R.string.summary_generate_months)) }
+                    )
+                }
             }
-            TextButton(onClick = { showGenerateDialog = true }) {
-                Text(stringResource(R.string.summary_generate_months))
+            IconButton(onClick = onGoNext, enabled = canGoNext) {
+                Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.summary_next_month_cd))
             }
-        }
-        IconButton(onClick = onGoNext, enabled = canGoNext) {
-            Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.summary_next_month_cd))
+            if (onToggleHeaderPinned != null) {
+                IconButton(onClick = onToggleHeaderPinned) {
+                    Icon(
+                        imageVector = Icons.Default.PushPin,
+                        contentDescription = stringResource(
+                            if (isHeaderPinned) R.string.action_unpin_header else R.string.action_pin_header
+                        ),
+                        tint = if (isHeaderPinned) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                }
+            }
         }
     }
 

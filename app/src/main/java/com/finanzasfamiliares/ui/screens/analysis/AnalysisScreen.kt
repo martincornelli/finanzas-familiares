@@ -51,6 +51,7 @@ fun AnalysisScreen(
     canGoNextMonth: Boolean = false,
     onGoPreviousMonth: () -> Unit = {},
     onGoNextMonth: () -> Unit = {},
+    headerPinned: Boolean = true,
     headerContent: @Composable () -> Unit = {},
     viewModel: AnalysisViewModel = hiltViewModel()
 ) {
@@ -97,13 +98,19 @@ fun AnalysisScreen(
         onGoNext = onGoNextMonth,
         modifier = Modifier.fillMaxSize()
     ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        Column(Modifier.fillMaxSize()) {
+            if (headerPinned) {
+                headerContent()
+            }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
         item {
-            headerContent()
+            if (!headerPinned) {
+                headerContent()
+            }
             Text(
                 text = stringResource(R.string.analysis_title),
                 style = MaterialTheme.typography.titleLarge,
@@ -157,7 +164,8 @@ fun AnalysisScreen(
                 }
             }
         }
-    }
+            }
+        }
     }
 }
 

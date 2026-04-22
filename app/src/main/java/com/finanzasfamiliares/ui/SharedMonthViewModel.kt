@@ -25,10 +25,12 @@ class SharedMonthViewModel @Inject constructor(
     private val fmt = DateTimeFormatter.ofPattern("yyyy-MM")
     private val _yearMonth = MutableStateFlow(YearMonth.now().format(fmt))
     private val _isGenerating = MutableStateFlow(false)
+    private val _isDeletingMonths = MutableStateFlow(false)
     private val whileSubscribed = SharingStarted.WhileSubscribed(5_000)
 
     val yearMonth: StateFlow<String> = _yearMonth.asStateFlow()
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
+    val isDeletingMonths: StateFlow<Boolean> = _isDeletingMonths.asStateFlow()
 
     val monthLabel: StateFlow<String> = _yearMonth
         .map { yearMonth ->
@@ -105,6 +107,19 @@ class SharedMonthViewModel @Inject constructor(
                 repo.generateFutureMonths(_yearMonth.value, monthsAhead)
             } finally {
                 _isGenerating.value = false
+            }
+        }
+    }
+
+    fun deleteSelectedMonthAndFuture() {
+        viewModelScope.launch {
+            _isDeletingMonths.value = true
+            try {
+                val nextSelectedMonth = repo.deleteMonthsFrom(_yearMonth.value)
+                _yearMonth.value = nextSelectedMonth
+                ensureCurrentMonthDocument(nextSelectedMonth)
+            } finally {
+                _isDeletingMonths.value = false
             }
         }
     }

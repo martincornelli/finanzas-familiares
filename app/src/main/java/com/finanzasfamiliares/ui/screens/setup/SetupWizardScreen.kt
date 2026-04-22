@@ -48,24 +48,25 @@ import com.finanzasfamiliares.ui.components.clearZeroOnFocus
 fun SetupWizardScreen(viewModel: SetupWizardViewModel = hiltViewModel()) {
     val isSubmitting by viewModel.isSubmitting.collectAsState()
     val joinError by viewModel.joinError.collectAsState()
+    val setupError by viewModel.setupError.collectAsState()
 
     var step by rememberSaveable { mutableIntStateOf(0) }
     var incomeCurrency by rememberSaveable { mutableStateOf("") }
     var purchaseRate by rememberSaveable { mutableStateOf("") }
     var saleRate by rememberSaveable { mutableStateOf("") }
-    var greenThreshold by rememberSaveable { mutableStateOf("") }
-    var yellowThreshold by rememberSaveable { mutableStateOf("") }
+    var greenThreshold by rememberSaveable { mutableStateOf("20000") }
+    var yellowThreshold by rememberSaveable { mutableStateOf("5000") }
     var wantsToJoinFamily by rememberSaveable { mutableStateOf(false) }
     var familyCode by rememberSaveable { mutableStateOf("") }
 
     val purchaseRateValue = purchaseRate.parseFlexibleDouble()
     val saleRateValue = saleRate.parseFlexibleDouble()
-    val greenThresholdValue = greenThreshold.parseFlexibleDouble()
-    val yellowThresholdValue = yellowThreshold.parseFlexibleDouble()
+    val greenThresholdValue = greenThreshold.parseFlexibleDouble(preferThousandsForSingleSeparator = true)
+    val yellowThresholdValue = yellowThreshold.parseFlexibleDouble(preferThousandsForSingleSeparator = true)
     val totalSteps = if (wantsToJoinFamily) 1 else 4
 
     val isCurrentStepValid = when (step) {
-        0 -> !wantsToJoinFamily || familyCode.isBlank() || familyCode.length == 6
+        0 -> !wantsToJoinFamily || familyCode.length == 6
         1 -> incomeCurrency.isNotBlank()
         2 -> purchaseRateValue != null && saleRateValue != null && saleRateValue >= purchaseRateValue
         else -> greenThresholdValue != null && yellowThresholdValue != null && yellowThresholdValue <= greenThresholdValue
@@ -224,9 +225,35 @@ fun SetupWizardScreen(viewModel: SetupWizardViewModel = hiltViewModel()) {
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.outline
                                 )
+                                if (
+                                    greenThresholdValue != null &&
+                                    yellowThresholdValue != null &&
+                                    yellowThresholdValue > greenThresholdValue
+                                ) {
+                                    Text(
+                                        stringResource(R.string.setup_margin_error),
+                                        color = MaterialTheme.colorScheme.error,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
                             }
                         }
                     }
+                }
+
+                if (!isCurrentStepValid) {
+                    Text(
+                        stringResource(R.string.setup_required_fields),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                if (setupError != null) {
+                    Text(
+                        setupError ?: stringResource(R.string.setup_submit_error),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
 
                 HorizontalDivider()
@@ -342,10 +369,44 @@ private fun WizardAmountField(
     )
 }
 
-private fun String.parseFlexibleDouble(): Double? =
-    trim()
-        .replace(",", ".")
-        .toDoubleOrNull()
+private fun String.parseFlexibleDouble(preferThousandsForSingleSeparator: Boolean = false): Double? {
+    var value = trim()
+        .replace("U\$S", "", ignoreCase = true)
+        .replace("$", "")
+        .replace(" ", "")
+
+    if (value.isBlank()) return null
+
+    val commaCount = value.count { it == ',' }
+    val dotCount = value.count { it == '.' }
+    val lastComma = value.lastIndexOf(',')
+    val lastDot = value.lastIndexOf('.')
+
+    value = when {
+        commaCount > 0 && dotCount > 0 -> {
+            val decimalSeparator = if (lastComma > lastDot) ',' else '.'
+            val groupSeparator = if (decimalSeparator == ',') '.' else ','
+            value
+                .replace(groupSeparator.toString(), "")
+                .replace(decimalSeparator, '.')
+        }
+        preferThousandsForSingleSeparator && commaCount + dotCount == 1 -> {
+            val separator = if (commaCount == 1) ',' else '.'
+            val parts = value.split(separator)
+            if (parts.size == 2 && parts[1].length == 3) {
+                parts.joinToString("")
+            } else {
+                value.replace(separator, '.')
+            }
+        }
+        preferThousandsForSingleSeparator && (commaCount > 1 || dotCount > 1) -> {
+            value.replace(",", "").replace(".", "")
+        }
+        else -> value.replace(",", ".")
+    }
+
+    return value.toDoubleOrNull()
+}
 
 private fun stepProgress(step: Int, wantsToJoinFamily: Boolean): Float =
     if (wantsToJoinFamily) 1f else (step + 1) / 4f

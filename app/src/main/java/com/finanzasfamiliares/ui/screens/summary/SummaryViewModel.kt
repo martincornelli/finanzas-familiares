@@ -77,4 +77,8 @@ class SummaryViewModel @Inject constructor(
     fun deleteVariableIncome(id: String) {
         viewModelScope.launch { repo.deleteVariableIncome(_yearMonth.value, id) }
     }
+
+    fun deleteVariableIncomes(ids: Set<String>) {
+        viewModelScope.launch { repo.deleteVariableIncomes(_yearMonth.value, ids) }
+    }
 }

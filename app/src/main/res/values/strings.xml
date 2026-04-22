@@ -15,12 +15,16 @@
     <string name="action_edit">Editar</string>
     <string name="action_delete">Eliminar</string>
     <string name="action_add_anyway">Agregar igual</string>
+    <string name="action_select_all">Seleccionar todos</string>
+    <string name="action_clear_selection">Deseleccionar todos</string>
     <string name="action_delete_selected">Eliminar seleccionados</string>
     <string name="delete_confirm_title">Confirmar eliminacion</string>
     <string name="delete_confirm_named">¿Seguro que deseas eliminar "%1$s"?</string>
     <string name="delete_confirm_selected">¿Seguro que deseas eliminar los elementos seleccionados?</string>
     <string name="delete_confirm_future">Eliminar tambien de los meses siguientes</string>
     <string name="action_pin">Pin</string>
+    <string name="action_pin_header">Fijar encabezado</string>
+    <string name="action_unpin_header">Soltar encabezado</string>
     <string name="selection_count">%1$d seleccionados</string>
     <string name="startup_loading">Cargando tus finanzas...</string>
     <string name="setup_title">Configuraci&#243;n inicial</string>
@@ -34,8 +38,10 @@
     <string name="setup_exchange_title">Tipo de cambio inicial</string>
     <string name="setup_exchange_body">Ingresa los valores de compra y venta del d&#243;lar. Este paso es obligatorio incluso si tu ingreso principal es en pesos, porque la app tambi&#233;n los usa para gastos, tarjetas, ahorros y conversiones.</string>
     <string name="setup_exchange_error">El valor de venta debe ser mayor o igual al valor de compra.</string>
+    <string name="setup_required_fields">Completa los valores requeridos para continuar.</string>
     <string name="setup_margin_title">Colores del saldo disponible</string>
     <string name="setup_margin_body">Define desde qu&#233; monto el margen disponible cambia de color para ayudarte a interpretar r&#225;pidamente tu situaci&#243;n mensual.</string>
+    <string name="setup_margin_error">El valor amarillo debe ser menor o igual al valor verde.</string>
     <string name="setup_margin_help_green">Verde: se mostrar&#225; cuando el saldo disponible sea igual o superior al monto definido como \"Verde desde\".</string>
     <string name="setup_margin_help_yellow">Amarillo: se mostrar&#225; cuando el saldo disponible sea igual o superior al monto definido como \"Amarillo desde\" y menor al umbral verde.</string>
     <string name="setup_margin_help_red">Rojo: se mostrar&#225; cuando el saldo disponible quede por debajo del umbral amarillo.</string>
@@ -43,6 +49,7 @@
     <string name="setup_family_body">Este paso es opcional. Si otra persona ya usa la app, puedes ingresar su c&#243;digo para compartir informaci&#243;n y sincronizarse.</string>
     <string name="setup_family_toggle">Quiero ingresar un c&#243;digo</string>
     <string name="setup_family_optional_help">Si prefieres hacerlo despu&#233;s, puedes omitir este paso y configurarlo luego desde Config.</string>
+    <string name="setup_submit_error">No pudimos finalizar la configuraci&#243;n. Revisa tu conexi&#243;n e intenta nuevamente.</string>
 
     <string name="prefix_uyu">$ </string>
     <string name="prefix_usd">U$S </string>
@@ -97,6 +104,16 @@
     <string name="summary_total_obligations">Total obligaciones</string>
     <string name="summary_prev_month_cd">Mes anterior</string>
     <string name="summary_next_month_cd">Mes siguiente</string>
+    <string name="summary_delete_month_button">Eliminar mes</string>
+    <string name="summary_delete_months_button">Eliminar este mes y siguientes</string>
+    <string name="summary_delete_month_title">Eliminar mes</string>
+    <string name="summary_delete_months_title">Eliminar meses</string>
+    <string name="summary_delete_month_message">&#191;Seguro que deseas eliminar %1$s? Esta acci&#243;n no se puede deshacer.</string>
+    <string name="summary_delete_months_message">Para mantener consistentes las cuotas, recurrencias y proyecciones, se eliminar&#225; %1$s y todos los meses siguientes. Esta acci&#243;n no se puede deshacer.</string>
+    <string name="summary_delete_month_confirm">Eliminar mes</string>
+    <string name="summary_delete_months_confirm">Eliminar meses</string>
+    <string name="summary_deleting_months">Eliminando meses</string>
+    <string name="summary_deleting_months_hint">Actualizando la planificaci&#243;n mensual...</string>
 
     <string name="dialog_primary_income_title">Ingreso principal mensual</string>
     <string name="dialog_primary_income_label">Monto en dólares</string>
@@ -230,6 +247,18 @@
     <string name="dialog_saving_label_subtract">Monto a restar</string>
 
     <string name="config_title">Configuración</string>
+    <string name="config_section_appearance">Apariencia</string>
+    <string name="config_theme_mode_label">Modo</string>
+    <string name="config_theme_system">Sistema</string>
+    <string name="config_theme_light">Claro</string>
+    <string name="config_theme_dark">Oscuro</string>
+    <string name="config_accent_color_label">Color principal</string>
+    <string name="config_accent_green">Verde</string>
+    <string name="config_accent_blue">Azul</string>
+    <string name="config_accent_teal">Turquesa</string>
+    <string name="config_accent_indigo">&#205;ndigo</string>
+    <string name="config_accent_violet">Violeta</string>
+    <string name="config_accent_slate">Pizarra</string>
     <string name="config_section_income_currency">Moneda de ingreso</string>
     <string name="config_section_exchange">Tipo de cambio</string>
     <string name="config_base_rate_label">Dólar - Compra</string>
@@ -251,10 +280,17 @@
     <string name="config_join_field_label">Unirse con codigo</string>
     <string name="config_join_field_hint">Ingresa el codigo de la cuenta principal</string>
     <string name="config_join_button">Unirse a la familia</string>
+    <string name="config_leave_family_description">Este dispositivo est&#225; sincronizado con una familia compartida.</string>
+    <string name="config_leave_family_button">Salir de la familia</string>
+    <string name="config_leave_family_title">Salir de la familia</string>
+    <string name="config_leave_family_message">Este dispositivo dejar&#225; de sincronizarse con esta familia. Los datos compartidos no se eliminar&#225;n y podr&#225;s unirte nuevamente con un c&#243;digo de invitaci&#243;n.</string>
+    <string name="config_leave_family_confirm">Salir</string>
+    <string name="config_version_label">Versi&#243;n %1$s</string>
 
     <string name="default_saving1_name">Ahorro 1</string>
     <string name="default_saving2_name">Ahorro 2</string>
     <string name="default_saving3_name">Ahorro 3</string>
 
     <string name="error_invalid_code">Codigo invalido</string>
+    <string name="error_not_shared_family">No es posible salir porque esta no es una familia compartida.</string>
 </resources>

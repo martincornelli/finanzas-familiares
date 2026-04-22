@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.finanzasfamiliares.ui.SharedMonthViewModel
@@ -37,14 +38,19 @@ val bottomNavItems = listOf(Screen.Summary, Screen.Expenses, Screen.Tithe, Scree
 fun FinanzasApp() {
     val sharedMonth: SharedMonthViewModel = hiltViewModel()
     var currentRoute by rememberSaveable { mutableStateOf(Screen.Summary.route) }
+    var isMonthHeaderPinned by rememberSaveable { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         sharedMonth.resetToCurrentMonth()
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ) {
                 bottomNavItems.forEach { screen ->
                     NavigationBarItem(
                         icon = {
@@ -53,12 +59,24 @@ fun FinanzasApp() {
                                 contentDescription = null
                             )
                         },
-                        label = null,
+                        label = {
+                            Text(
+                                text = stringResource(screen.labelRes),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
                         alwaysShowLabel = false,
                         selected = currentRoute == screen.route,
                         onClick = {
                             currentRoute = screen.route
-                        }
+                        },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     )
                 }
             }
@@ -70,20 +88,48 @@ fun FinanzasApp() {
                 .padding(innerPadding)
         ) {
             when (currentRoute) {
-                Screen.Summary.route -> SummaryRoute(sharedMonth = sharedMonth)
-                Screen.Expenses.route -> ExpensesRoute(sharedMonth = sharedMonth)
-                Screen.Tithe.route -> DonationsRoute(sharedMonth = sharedMonth)
-                Screen.Savings.route -> SavingsRoute(sharedMonth = sharedMonth)
-                Screen.Analysis.route -> AnalysisRoute(sharedMonth = sharedMonth)
+                Screen.Summary.route -> SummaryRoute(
+                    sharedMonth = sharedMonth,
+                    isMonthHeaderPinned = isMonthHeaderPinned,
+                    onToggleMonthHeaderPinned = { isMonthHeaderPinned = !isMonthHeaderPinned }
+                )
+                Screen.Expenses.route -> ExpensesRoute(
+                    sharedMonth = sharedMonth,
+                    isMonthHeaderPinned = isMonthHeaderPinned,
+                    onToggleMonthHeaderPinned = { isMonthHeaderPinned = !isMonthHeaderPinned }
+                )
+                Screen.Tithe.route -> DonationsRoute(
+                    sharedMonth = sharedMonth,
+                    isMonthHeaderPinned = isMonthHeaderPinned,
+                    onToggleMonthHeaderPinned = { isMonthHeaderPinned = !isMonthHeaderPinned }
+                )
+                Screen.Savings.route -> SavingsRoute(
+                    sharedMonth = sharedMonth,
+                    isMonthHeaderPinned = isMonthHeaderPinned,
+                    onToggleMonthHeaderPinned = { isMonthHeaderPinned = !isMonthHeaderPinned }
+                )
+                Screen.Analysis.route -> AnalysisRoute(
+                    sharedMonth = sharedMonth,
+                    isMonthHeaderPinned = isMonthHeaderPinned,
+                    onToggleMonthHeaderPinned = { isMonthHeaderPinned = !isMonthHeaderPinned }
+                )
                 Screen.Config.route -> ConfigScreen()
-                else -> SummaryRoute(sharedMonth = sharedMonth)
+                else -> SummaryRoute(
+                    sharedMonth = sharedMonth,
+                    isMonthHeaderPinned = isMonthHeaderPinned,
+                    onToggleMonthHeaderPinned = { isMonthHeaderPinned = !isMonthHeaderPinned }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SummaryRoute(sharedMonth: SharedMonthViewModel) {
+private fun SummaryRoute(
+    sharedMonth: SharedMonthViewModel,
+    isMonthHeaderPinned: Boolean,
+    onToggleMonthHeaderPinned: () -> Unit
+) {
     val currentYearMonth by sharedMonth.yearMonth.collectAsState()
     val monthLabel by sharedMonth.monthLabel.collectAsState()
     val availableMonths by sharedMonth.availableMonths.collectAsState()
@@ -91,6 +137,7 @@ private fun SummaryRoute(sharedMonth: SharedMonthViewModel) {
     val canGoNextMonth by sharedMonth.canGoNextMonth.collectAsState()
     val isCurrentMonth by sharedMonth.isCurrentMonth.collectAsState()
     val isGenerating by sharedMonth.isGenerating.collectAsState()
+    val isDeletingMonths by sharedMonth.isDeletingMonths.collectAsState()
     SummaryScreen(
         yearMonth = currentYearMonth,
         monthLabel = monthLabel,
@@ -99,16 +146,24 @@ private fun SummaryRoute(sharedMonth: SharedMonthViewModel) {
         canGoNextMonth = canGoNextMonth,
         isCurrentMonthSelected = isCurrentMonth,
         isGeneratingMonths = isGenerating,
+        isDeletingMonths = isDeletingMonths,
+        isMonthHeaderPinned = isMonthHeaderPinned,
         onGoPreviousMonth = sharedMonth::goToPreviousAvailableMonth,
         onGoNextMonth = sharedMonth::goToNextAvailableMonth,
         onGoToMonth = sharedMonth::goToMonth,
         onGoToCurrentMonth = sharedMonth::resetToCurrentMonth,
-        onGenerateMonths = sharedMonth::generateFutureMonths
+        onGenerateMonths = sharedMonth::generateFutureMonths,
+        onDeleteMonthAndFuture = sharedMonth::deleteSelectedMonthAndFuture,
+        onToggleMonthHeaderPinned = onToggleMonthHeaderPinned
     )
 }
 
 @Composable
-private fun ExpensesRoute(sharedMonth: SharedMonthViewModel) {
+private fun ExpensesRoute(
+    sharedMonth: SharedMonthViewModel,
+    isMonthHeaderPinned: Boolean,
+    onToggleMonthHeaderPinned: () -> Unit
+) {
     val currentYearMonth by sharedMonth.yearMonth.collectAsState()
     val monthLabel by sharedMonth.monthLabel.collectAsState()
     val availableMonths by sharedMonth.availableMonths.collectAsState()
@@ -122,6 +177,7 @@ private fun ExpensesRoute(sharedMonth: SharedMonthViewModel) {
         canGoNextMonth = canGoNextMonth,
         onGoPreviousMonth = sharedMonth::goToPreviousAvailableMonth,
         onGoNextMonth = sharedMonth::goToNextAvailableMonth,
+        headerPinned = isMonthHeaderPinned,
         headerContent = {
             SharedMonthHeader(
                 currentYearMonth = currentYearMonth,
@@ -131,6 +187,8 @@ private fun ExpensesRoute(sharedMonth: SharedMonthViewModel) {
                 canGoNextMonth = canGoNextMonth,
                 isCurrentMonth = isCurrentMonth,
                 isGenerating = isGenerating,
+                isMonthHeaderPinned = isMonthHeaderPinned,
+                onToggleMonthHeaderPinned = onToggleMonthHeaderPinned,
                 sharedMonth = sharedMonth
             )
         }
@@ -138,7 +196,11 @@ private fun ExpensesRoute(sharedMonth: SharedMonthViewModel) {
 }
 
 @Composable
-private fun DonationsRoute(sharedMonth: SharedMonthViewModel) {
+private fun DonationsRoute(
+    sharedMonth: SharedMonthViewModel,
+    isMonthHeaderPinned: Boolean,
+    onToggleMonthHeaderPinned: () -> Unit
+) {
     val currentYearMonth by sharedMonth.yearMonth.collectAsState()
     val monthLabel by sharedMonth.monthLabel.collectAsState()
     val availableMonths by sharedMonth.availableMonths.collectAsState()
@@ -152,6 +214,7 @@ private fun DonationsRoute(sharedMonth: SharedMonthViewModel) {
         canGoNextMonth = canGoNextMonth,
         onGoPreviousMonth = sharedMonth::goToPreviousAvailableMonth,
         onGoNextMonth = sharedMonth::goToNextAvailableMonth,
+        headerPinned = isMonthHeaderPinned,
         headerContent = {
             SharedMonthHeader(
                 currentYearMonth = currentYearMonth,
@@ -161,6 +224,8 @@ private fun DonationsRoute(sharedMonth: SharedMonthViewModel) {
                 canGoNextMonth = canGoNextMonth,
                 isCurrentMonth = isCurrentMonth,
                 isGenerating = isGenerating,
+                isMonthHeaderPinned = isMonthHeaderPinned,
+                onToggleMonthHeaderPinned = onToggleMonthHeaderPinned,
                 sharedMonth = sharedMonth
             )
         }
@@ -168,7 +233,11 @@ private fun DonationsRoute(sharedMonth: SharedMonthViewModel) {
 }
 
 @Composable
-private fun SavingsRoute(sharedMonth: SharedMonthViewModel) {
+private fun SavingsRoute(
+    sharedMonth: SharedMonthViewModel,
+    isMonthHeaderPinned: Boolean,
+    onToggleMonthHeaderPinned: () -> Unit
+) {
     val currentYearMonth by sharedMonth.yearMonth.collectAsState()
     val monthLabel by sharedMonth.monthLabel.collectAsState()
     val availableMonths by sharedMonth.availableMonths.collectAsState()
@@ -182,6 +251,7 @@ private fun SavingsRoute(sharedMonth: SharedMonthViewModel) {
         canGoNextMonth = canGoNextMonth,
         onGoPreviousMonth = sharedMonth::goToPreviousAvailableMonth,
         onGoNextMonth = sharedMonth::goToNextAvailableMonth,
+        headerPinned = isMonthHeaderPinned,
         headerContent = {
             SharedMonthHeader(
                 currentYearMonth = currentYearMonth,
@@ -191,6 +261,8 @@ private fun SavingsRoute(sharedMonth: SharedMonthViewModel) {
                 canGoNextMonth = canGoNextMonth,
                 isCurrentMonth = isCurrentMonth,
                 isGenerating = isGenerating,
+                isMonthHeaderPinned = isMonthHeaderPinned,
+                onToggleMonthHeaderPinned = onToggleMonthHeaderPinned,
                 sharedMonth = sharedMonth
             )
         }
@@ -198,7 +270,11 @@ private fun SavingsRoute(sharedMonth: SharedMonthViewModel) {
 }
 
 @Composable
-private fun AnalysisRoute(sharedMonth: SharedMonthViewModel) {
+private fun AnalysisRoute(
+    sharedMonth: SharedMonthViewModel,
+    isMonthHeaderPinned: Boolean,
+    onToggleMonthHeaderPinned: () -> Unit
+) {
     val currentYearMonth by sharedMonth.yearMonth.collectAsState()
     val monthLabel by sharedMonth.monthLabel.collectAsState()
     val availableMonths by sharedMonth.availableMonths.collectAsState()
@@ -212,6 +288,7 @@ private fun AnalysisRoute(sharedMonth: SharedMonthViewModel) {
         canGoNextMonth = canGoNextMonth,
         onGoPreviousMonth = sharedMonth::goToPreviousAvailableMonth,
         onGoNextMonth = sharedMonth::goToNextAvailableMonth,
+        headerPinned = isMonthHeaderPinned,
         headerContent = {
             SharedMonthHeader(
                 currentYearMonth = currentYearMonth,
@@ -221,6 +298,8 @@ private fun AnalysisRoute(sharedMonth: SharedMonthViewModel) {
                 canGoNextMonth = canGoNextMonth,
                 isCurrentMonth = isCurrentMonth,
                 isGenerating = isGenerating,
+                isMonthHeaderPinned = isMonthHeaderPinned,
+                onToggleMonthHeaderPinned = onToggleMonthHeaderPinned,
                 sharedMonth = sharedMonth
             )
         }
@@ -236,6 +315,8 @@ private fun SharedMonthHeader(
     canGoNextMonth: Boolean,
     isCurrentMonth: Boolean,
     isGenerating: Boolean,
+    isMonthHeaderPinned: Boolean,
+    onToggleMonthHeaderPinned: () -> Unit,
     sharedMonth: SharedMonthViewModel
 ) {
     MonthNavigationHeader(
@@ -246,10 +327,12 @@ private fun SharedMonthHeader(
         canGoNext = canGoNextMonth,
         isCurrentMonth = isCurrentMonth,
         isGenerating = isGenerating,
+        isHeaderPinned = isMonthHeaderPinned,
         onGoPrevious = sharedMonth::goToPreviousAvailableMonth,
         onGoNext = sharedMonth::goToNextAvailableMonth,
         onGoToMonth = sharedMonth::goToMonth,
         onGoToCurrentMonth = sharedMonth::resetToCurrentMonth,
-        onGenerateMonths = sharedMonth::generateFutureMonths
+        onGenerateMonths = sharedMonth::generateFutureMonths,
+        onToggleHeaderPinned = onToggleMonthHeaderPinned
     )
 }

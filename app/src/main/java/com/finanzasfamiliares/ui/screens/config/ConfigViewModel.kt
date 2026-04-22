@@ -27,9 +27,18 @@ class ConfigViewModel @Inject constructor(
     private val _joinError = MutableStateFlow<String?>(null)
     val joinError: StateFlow<String?> = _joinError.asStateFlow()
 
+    private val _familyActionError = MutableStateFlow<String?>(null)
+    val familyActionError: StateFlow<String?> = _familyActionError.asStateFlow()
+
+    private val _canLeaveFamily = MutableStateFlow(false)
+    val canLeaveFamily: StateFlow<Boolean> = _canLeaveFamily.asStateFlow()
+
+    private val _isLeavingFamily = MutableStateFlow(false)
+    val isLeavingFamily: StateFlow<Boolean> = _isLeavingFamily.asStateFlow()
+
     init {
         viewModelScope.launch {
-            _joinCode.value = repo.getCurrentFamily()?.joinCode
+            refreshFamilyState()
         }
     }
 
@@ -68,9 +77,32 @@ class ConfigViewModel @Inject constructor(
             val joinedConfig = repo.getConfig()
             repo.initSavingsIfNeeded(joinedConfig)
             _joinError.value = null
-            _joinCode.value = repo.getCurrentFamily()?.joinCode
+            _familyActionError.value = null
+            refreshFamilyState()
         }
     }
 
+    fun leaveFamily() = viewModelScope.launch {
+        _isLeavingFamily.value = true
+        val result = repo.leaveCurrentFamily()
+        if (result.isFailure) {
+            _familyActionError.value = when (result.exceptionOrNull()?.message) {
+                FinanceRepository.ERROR_NOT_SHARED_FAMILY -> context.getString(R.string.error_not_shared_family)
+                else -> result.exceptionOrNull()?.message
+            }
+        } else {
+            _joinError.value = null
+            _familyActionError.value = null
+            refreshFamilyState()
+        }
+        _isLeavingFamily.value = false
+    }
+
     fun clearJoinError() { _joinError.value = null }
+
+    private suspend fun refreshFamilyState() {
+        val family = repo.getCurrentFamily()
+        _joinCode.value = family?.joinCode
+        _canLeaveFamily.value = (family?.memberIds?.size ?: 0) > 1
+    }
 }

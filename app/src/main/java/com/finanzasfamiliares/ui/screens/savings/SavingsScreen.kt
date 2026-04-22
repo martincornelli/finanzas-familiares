@@ -39,6 +39,7 @@ fun SavingsScreen(
     canGoNextMonth: Boolean = false,
     onGoPreviousMonth: () -> Unit = {},
     onGoNextMonth: () -> Unit = {},
+    headerPinned: Boolean = true,
     headerContent: @Composable () -> Unit = {},
     viewModel: SavingsViewModel = hiltViewModel()
 ) {
@@ -51,6 +52,10 @@ fun SavingsScreen(
     var selectedSavingIds by remember { mutableStateOf(setOf<String>()) }
     var deleteRequest by remember { mutableStateOf<SavingDeleteRequest?>(null) }
     val dateFmt = remember { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("es", "UY")) }
+    val selectableSavingIds = remember(savings) {
+        savings.map { it.id }.toSet()
+    }
+    val canSelectMoreSavings = selectableSavingIds.any { it !in selectedSavingIds }
 
     fun toggleSelection(id: String) {
         selectedSavingIds = if (selectedSavingIds.contains(id)) {
@@ -79,44 +84,37 @@ fun SavingsScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+            Column(Modifier.fillMaxSize()) {
+                if (headerPinned) {
+                    headerContent()
+                }
+                if (selectedSavingIds.isNotEmpty()) {
+                    SelectionActionBar(
+                        selectedCount = selectedSavingIds.size,
+                        canSelectAll = canSelectMoreSavings,
+                        onSelectAll = { selectedSavingIds = selectableSavingIds },
+                        onClearSelection = { selectedSavingIds = emptySet() },
+                        onDeleteSelected = {
+                            deleteRequest = SavingDeleteRequest.Bulk(selectedSavingIds)
+                        }
+                    )
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
             item {
-                headerContent()
-                Spacer(Modifier.height(6.dp))
+                if (!headerPinned) {
+                    headerContent()
+                    Spacer(Modifier.height(6.dp))
+                }
                 Text(
                     stringResource(R.string.savings_title),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(12.dp))
-            }
-
-            if (selectedSavingIds.isNotEmpty()) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            stringResource(R.string.selection_count, selectedSavingIds.size),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        TextButton(onClick = {
-                            deleteRequest = SavingDeleteRequest.Bulk(selectedSavingIds)
-                        }) {
-                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text(stringResource(R.string.action_delete_selected))
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                }
             }
 
             items(savings, key = { it.id }) { saving ->
@@ -162,11 +160,20 @@ fun SavingsScreen(
                             )
                             if (selectedSavingIds.isEmpty()) {
                                 Spacer(Modifier.width(8.dp))
-                                Icon(
-                                    Icons.Default.Edit,
-                                    stringResource(R.string.savings_update_cd),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
+                                IconButton(onClick = { editingSaving = saving }) {
+                                    Icon(
+                                        Icons.Default.Edit,
+                                        stringResource(R.string.savings_update_cd),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                IconButton(onClick = { deleteRequest = SavingDeleteRequest.Single(saving) }) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        stringResource(R.string.action_delete),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
                             }
                         }
                     }
@@ -183,6 +190,7 @@ fun SavingsScreen(
                 }
             }
         }
+    }
     }
 
     if (showAddSaving) {

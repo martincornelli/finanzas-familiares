@@ -57,6 +57,7 @@ import com.finanzasfamiliares.data.model.IncomeCurrency
 import com.finanzasfamiliares.ui.components.MonthSwipeContainer
 import com.finanzasfamiliares.ui.components.MonthHeader
 import com.finanzasfamiliares.ui.components.ReadOnlyBanner
+import com.finanzasfamiliares.ui.components.SelectionActionBar
 import com.finanzasfamiliares.ui.components.clearZeroOnFocus
 import com.finanzasfamiliares.ui.components.formatUSD
 import com.finanzasfamiliares.ui.components.formatUYU
@@ -64,6 +65,7 @@ import com.finanzasfamiliares.ui.components.toInputAmount
 import java.util.UUID
 
 private val PaidDonationBackgroundColor = Color(0xFFE0F4E5)
+private val PaidDonationContentColor = Color(0xFF173D2B)
 
 private enum class DonationPaymentFilter {
     ALL, PENDING, PAID
@@ -82,6 +84,7 @@ fun DonationsScreen(
     canGoNextMonth: Boolean = false,
     onGoPreviousMonth: () -> Unit = {},
     onGoNextMonth: () -> Unit = {},
+    headerPinned: Boolean = true,
     headerContent: @Composable () -> Unit = {},
     viewModel: DonationsViewModel = hiltViewModel()
 ) {
@@ -105,6 +108,10 @@ fun DonationsScreen(
     }
 
     val filteredDonations = allDonations.filter { matchesPayment(it.isPaid) }
+    val selectableDonationIds = remember(filteredDonations) {
+        filteredDonations.map { it.id }.toSet()
+    }
+    val canSelectMoreDonations = selectableDonationIds.any { it !in selectedDonationIds }
     val visibleDonationsUYU = filteredDonations.sumOf { it.totalUYU(primaryIncomeUYU, data?.cardExchangeRate ?: 0.0) }
     val paidDonationsUYU = allDonations.filter { it.isPaid }.sumOf { it.totalUYU(primaryIncomeUYU, data?.cardExchangeRate ?: 0.0) }
     val pendingDonationsUYU = allDonations.filter { !it.isPaid }.sumOf { it.totalUYU(primaryIncomeUYU, data?.cardExchangeRate ?: 0.0) }
@@ -136,40 +143,33 @@ fun DonationsScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 80.dp)
-            ) {
+            Column(Modifier.fillMaxSize()) {
+                if (headerPinned) {
+                    headerContent()
+                }
+                if (!isReadOnly && selectedDonationIds.isNotEmpty()) {
+                    SelectionActionBar(
+                        selectedCount = selectedDonationIds.size,
+                        canSelectAll = canSelectMoreDonations,
+                        onSelectAll = { selectedDonationIds = selectableDonationIds },
+                        onClearSelection = { selectedDonationIds = emptySet() },
+                        onDeleteSelected = {
+                            deleteRequest = DonationDeleteRequest.Bulk(selectedDonationIds)
+                        }
+                    )
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 80.dp)
+                ) {
             if (isReadOnly) {
                 item { ReadOnlyBanner() }
             }
 
             item {
-                headerContent()
-                Spacer(Modifier.height(8.dp))
-            }
-
-            if (!isReadOnly && selectedDonationIds.isNotEmpty()) {
-                item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            stringResource(R.string.selection_count, selectedDonationIds.size),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        TextButton(onClick = {
-                            deleteRequest = DonationDeleteRequest.Bulk(selectedDonationIds)
-                        }) {
-                            Text(stringResource(R.string.action_delete_selected))
-                        }
-                    }
-                    Spacer(Modifier.height(12.dp))
+                if (!headerPinned) {
+                    headerContent()
+                    Spacer(Modifier.height(8.dp))
                 }
             }
 
@@ -261,6 +261,7 @@ fun DonationsScreen(
                 }
             }
         }
+    }
     }
 
     if (showDonationDialog || editingDonation != null) {
@@ -364,6 +365,16 @@ private fun DonationRow(
         donation.isPaid -> PaidDonationBackgroundColor
         else -> MaterialTheme.colorScheme.surface
     }
+    val headlineColor = when {
+        selected -> MaterialTheme.colorScheme.onSecondaryContainer
+        donation.isPaid -> PaidDonationContentColor
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    val supportingColor = when {
+        selected -> MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.74f)
+        donation.isPaid -> PaidDonationContentColor.copy(alpha = 0.74f)
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
 
     ListItem(
         modifier = Modifier.combinedClickable(
@@ -371,7 +382,10 @@ private fun DonationRow(
             onLongClick = { if (!readOnly) onToggleSelection() }
         ),
         colors = ListItemDefaults.colors(
-            containerColor = containerColor
+            containerColor = containerColor,
+            headlineColor = headlineColor,
+            supportingColor = supportingColor,
+            trailingIconColor = headlineColor
         ),
         headlineContent = {
             Text(donation.name.ifBlank { stringResource(R.string.donations_item_fallback) })
@@ -383,7 +397,8 @@ private fun DonationRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     donation.totalUYU(primaryIncomeUYU, exchangeRate).formatUYU(),
-                    fontWeight = FontWeight.Medium
+                    fontWeight = FontWeight.Medium,
+                    color = headlineColor
                 )
                 if (!selectionMode) {
                     Checkbox(
@@ -393,7 +408,11 @@ private fun DonationRow(
                 }
                 if (!readOnly && !selectionMode) {
                     IconButton(onClick = onEdit) {
-                        Icon(Icons.Default.Edit, stringResource(R.string.action_edit))
+                        Icon(
+                            Icons.Default.Edit,
+                            stringResource(R.string.action_edit),
+                            tint = headlineColor.copy(alpha = 0.64f)
+                        )
                     }
                     IconButton(onClick = onDelete) {
                         Icon(

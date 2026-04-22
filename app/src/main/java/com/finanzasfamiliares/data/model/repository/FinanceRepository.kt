@@ -39,6 +39,7 @@ class FinanceRepository @Inject constructor(
 ) {
     companion object {
         const val ERROR_INVALID_CODE = "error_invalid_code"
+        const val ERROR_NOT_SHARED_FAMILY = "error_not_shared_family"
         private const val PREFS_NAME = "finanzas_familiares_prefs"
         private const val PREF_ACTIVE_FAMILY_ID = "active_family_id"
         private const val JOIN_CODES_COLLECTION = "familyJoinCodes"
@@ -114,11 +115,8 @@ class FinanceRepository @Inject constructor(
     }
 
     suspend fun createFamily(): Family {
-        val code = (100000..999999).random().toString()
         val uid = auth.currentUser!!.uid
-        val family = Family(id = uid, joinCode = code, memberIds = listOf(uid))
-        db.collection("families").document(uid).set(family).await()
-        ensureJoinCodeLookup(family)
+        val family = createFamilyDocument(id = uid, uid = uid)
         setFamilyId(uid)
         return family
     }
@@ -144,6 +142,39 @@ class FinanceRepository @Inject constructor(
             Result.success(
                 if (uid in family.memberIds) family else family.copy(memberIds = family.memberIds + uid)
             )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun leaveCurrentFamily(): Result<Family> {
+        return try {
+            val uid = auth.currentUser?.uid.orEmpty()
+            if (uid.isBlank()) return Result.failure(Exception(ERROR_NOT_SHARED_FAMILY))
+
+            val previousFamilyId = familyId
+            val previousFamily = db.collection("families").document(previousFamilyId)
+                .get().await()
+                .toObject(Family::class.java)
+                ?: return Result.failure(Exception(ERROR_NOT_SHARED_FAMILY))
+
+            if (uid !in previousFamily.memberIds || previousFamily.memberIds.size <= 1) {
+                return Result.failure(Exception(ERROR_NOT_SHARED_FAMILY))
+            }
+
+            val preservedConfig = getConfig().copy(planningThroughYearMonth = "")
+            val newFamily = createFamilyDocument(id = UUID.randomUUID().toString(), uid = uid)
+            db.collection("families").document(newFamily.id)
+                .collection("config").document("main")
+                .set(preservedConfig).await()
+
+            db.collection("families").document(previousFamilyId)
+                .update("memberIds", FieldValue.arrayRemove(uid)).await()
+
+            setFamilyId(newFamily.id)
+            runCatching { initSavingsIfNeeded(preservedConfig) }
+
+            Result.success(newFamily)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -353,6 +384,12 @@ class FinanceRepository @Inject constructor(
         saveMonth(month.copy(variableIncomes = month.variableIncomes.filter { it.id != id }))
     }
 
+    suspend fun deleteVariableIncomes(yearMonth: String, ids: Set<String>) {
+        if (ids.isEmpty()) return
+        val month = getMonth(yearMonth) ?: return
+        saveMonth(month.copy(variableIncomes = month.variableIncomes.filterNot { it.id in ids }))
+    }
+
     suspend fun upsertVariableExpense(yearMonth: String, expense: MoneyEntry) {
         val month = ensureMonthDocument(yearMonth)
         val updated = month.variableExpenses.toMutableList()
@@ -521,6 +558,37 @@ class FinanceRepository @Inject constructor(
             saveConfig(config.copy(planningThroughYearMonth = lastCreatedKey))
         }
         return lastCreatedKey
+    }
+
+    suspend fun deleteMonthsFrom(yearMonth: String): String {
+        val fmt = DateTimeFormatter.ofPattern("yyyy-MM")
+        val currentKey = YearMonth.now().format(fmt)
+        val monthKeys = getAvailableMonthKeys()
+        val monthsToDelete = monthKeys.filter { it >= yearMonth }
+        val remainingMonths = monthKeys.filter { it < yearMonth }
+        val nextSelectedMonth = remainingMonths.lastOrNull() ?: currentKey
+
+        monthsToDelete.chunked(400).forEach { chunk ->
+            val batch = db.batch()
+            chunk.forEach { key ->
+                val ref = db.collection("families").document(familyId)
+                    .collection("months").document(key)
+                batch.delete(ref)
+            }
+            batch.commit().await()
+        }
+
+        val config = getConfig()
+        val newPlanningLimit = remainingMonths.lastOrNull().orEmpty()
+        if (config.planningThroughYearMonth != newPlanningLimit) {
+            saveConfig(config.copy(planningThroughYearMonth = newPlanningLimit))
+        }
+
+        if (nextSelectedMonth == currentKey && currentKey !in remainingMonths) {
+            ensureMonthDocument(currentKey)
+        }
+
+        return nextSelectedMonth
     }
 
     fun observeSavings(yearMonth: String): Flow<List<Saving>> =
@@ -708,6 +776,28 @@ class FinanceRepository @Inject constructor(
                 )
             ).await()
         }
+    }
+
+    private suspend fun createFamilyDocument(id: String, uid: String): Family {
+        val family = Family(
+            id = id,
+            joinCode = generateUniqueJoinCode(),
+            memberIds = listOf(uid)
+        )
+        db.collection("families").document(id).set(family).await()
+        ensureJoinCodeLookup(family)
+        return family
+    }
+
+    private suspend fun generateUniqueJoinCode(): String {
+        repeat(20) {
+            val code = (100000..999999).random().toString()
+            val exists = db.collection(JOIN_CODES_COLLECTION).document(code)
+                .get().await()
+                .exists()
+            if (!exists) return code
+        }
+        return UUID.randomUUID().toString().takeLast(6)
     }
 
     private suspend fun getFutureMonthsFrom(yearMonth: String): List<MonthData> =

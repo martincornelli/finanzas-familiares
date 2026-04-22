@@ -15,7 +15,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -24,19 +26,36 @@ import com.finanzasfamiliares.R
 import com.finanzasfamiliares.data.model.IncomeCurrency
 import com.finanzasfamiliares.ui.components.clearZeroOnFocus
 import com.finanzasfamiliares.ui.components.toInputAmount
+import com.finanzasfamiliares.ui.theme.AppAccentColor
+import com.finanzasfamiliares.ui.theme.AppThemeMode
+import com.finanzasfamiliares.ui.theme.AppearanceViewModel
 import com.finanzasfamiliares.ui.theme.Green700
 import com.finanzasfamiliares.ui.theme.Yellow700
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun ConfigScreen(viewModel: ConfigViewModel = hiltViewModel()) {
+fun ConfigScreen(
+    viewModel: ConfigViewModel = hiltViewModel(),
+    appearanceViewModel: AppearanceViewModel = hiltViewModel()
+) {
     val config by viewModel.config.collectAsState()
+    val themeMode by appearanceViewModel.themeMode.collectAsState()
+    val accentColor by appearanceViewModel.accentColor.collectAsState()
     val joinCode by viewModel.joinCode.collectAsState()
     val joinError by viewModel.joinError.collectAsState()
+    val familyActionError by viewModel.familyActionError.collectAsState()
+    val canLeaveFamily by viewModel.canLeaveFamily.collectAsState()
+    val isLeavingFamily by viewModel.isLeavingFamily.collectAsState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val versionName = remember(context) {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0"
+        }.getOrDefault("1.0")
+    }
 
     var incomeCurrency by remember(config) { mutableStateOf(config.incomeCurrency) }
     var defaultRate by remember(config) { mutableStateOf(config.defaultExchangeRate.toInputAmount()) }
@@ -44,6 +63,7 @@ fun ConfigScreen(viewModel: ConfigViewModel = hiltViewModel()) {
     var greenAmount by remember(config) { mutableStateOf(config.marginGreenThresholdPct.toInputAmount()) }
     var yellowAmount by remember(config) { mutableStateOf(config.marginYellowThresholdPct.toInputAmount()) }
     var joinCodeInput by remember { mutableStateOf("") }
+    var showLeaveFamilyDialog by remember { mutableStateOf(false) }
     var purchaseRateSuccessTick by remember { mutableIntStateOf(0) }
     var saleRateSuccessTick by remember { mutableIntStateOf(0) }
     var greenAmountSuccessTick by remember { mutableIntStateOf(0) }
@@ -115,9 +135,84 @@ fun ConfigScreen(viewModel: ConfigViewModel = hiltViewModel()) {
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
 
-        Text(stringResource(R.string.config_section_income_currency),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+        SectionTitle(stringResource(R.string.config_section_appearance))
+
+        Text(
+            stringResource(R.string.config_theme_mode_label),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ThemeModeChip(
+                selected = themeMode == AppThemeMode.SYSTEM,
+                label = stringResource(R.string.config_theme_system),
+                onClick = { appearanceViewModel.setThemeMode(AppThemeMode.SYSTEM) }
+            )
+            ThemeModeChip(
+                selected = themeMode == AppThemeMode.LIGHT,
+                label = stringResource(R.string.config_theme_light),
+                onClick = { appearanceViewModel.setThemeMode(AppThemeMode.LIGHT) }
+            )
+            ThemeModeChip(
+                selected = themeMode == AppThemeMode.DARK,
+                label = stringResource(R.string.config_theme_dark),
+                onClick = { appearanceViewModel.setThemeMode(AppThemeMode.DARK) }
+            )
+        }
+
+        Text(
+            stringResource(R.string.config_accent_color_label),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AccentChip(
+                selected = accentColor == AppAccentColor.GREEN,
+                label = stringResource(R.string.config_accent_green),
+                swatch = Color(0xFF176B5A),
+                onClick = { appearanceViewModel.setAccentColor(AppAccentColor.GREEN) }
+            )
+            AccentChip(
+                selected = accentColor == AppAccentColor.BLUE,
+                label = stringResource(R.string.config_accent_blue),
+                swatch = Color(0xFF2563EB),
+                onClick = { appearanceViewModel.setAccentColor(AppAccentColor.BLUE) }
+            )
+            AccentChip(
+                selected = accentColor == AppAccentColor.TEAL,
+                label = stringResource(R.string.config_accent_teal),
+                swatch = Color(0xFF0F766E),
+                onClick = { appearanceViewModel.setAccentColor(AppAccentColor.TEAL) }
+            )
+            AccentChip(
+                selected = accentColor == AppAccentColor.INDIGO,
+                label = stringResource(R.string.config_accent_indigo),
+                swatch = Color(0xFF4F46E5),
+                onClick = { appearanceViewModel.setAccentColor(AppAccentColor.INDIGO) }
+            )
+            AccentChip(
+                selected = accentColor == AppAccentColor.VIOLET,
+                label = stringResource(R.string.config_accent_violet),
+                swatch = Color(0xFF7C3AED),
+                onClick = { appearanceViewModel.setAccentColor(AppAccentColor.VIOLET) }
+            )
+            AccentChip(
+                selected = accentColor == AppAccentColor.SLATE,
+                label = stringResource(R.string.config_accent_slate),
+                swatch = Color(0xFF475569),
+                onClick = { appearanceViewModel.setAccentColor(AppAccentColor.SLATE) }
+            )
+        }
+
+        HorizontalDivider()
+
+        SectionTitle(stringResource(R.string.config_section_income_currency))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(
@@ -134,9 +229,7 @@ fun ConfigScreen(viewModel: ConfigViewModel = hiltViewModel()) {
 
         HorizontalDivider()
 
-        Text(stringResource(R.string.config_section_exchange),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+        SectionTitle(stringResource(R.string.config_section_exchange))
 
         ValidatedOutlinedTextField(
             value = defaultRate,
@@ -159,9 +252,7 @@ fun ConfigScreen(viewModel: ConfigViewModel = hiltViewModel()) {
 
         HorizontalDivider()
 
-        Text(stringResource(R.string.config_section_margin),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+        SectionTitle(stringResource(R.string.config_section_margin))
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             ValidatedOutlinedTextField(
@@ -185,9 +276,7 @@ fun ConfigScreen(viewModel: ConfigViewModel = hiltViewModel()) {
 
         HorizontalDivider()
 
-        Text(stringResource(R.string.config_section_family),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+        SectionTitle(stringResource(R.string.config_section_family))
 
         joinCode?.let { currentJoinCode ->
             Card(Modifier.fillMaxWidth()) {
@@ -216,9 +305,123 @@ fun ConfigScreen(viewModel: ConfigViewModel = hiltViewModel()) {
             Text(stringResource(R.string.config_join_button))
         }
 
+        if (familyActionError != null) {
+            Text(familyActionError!!, color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall)
+        }
+
+        if (canLeaveFamily) {
+            HorizontalDivider()
+
+            Text(
+                stringResource(R.string.config_leave_family_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedButton(
+                onClick = { showLeaveFamilyDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLeavingFamily,
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                if (isLeavingFamily) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(stringResource(R.string.config_leave_family_button))
+            }
+        }
+
+        Text(
+            text = stringResource(R.string.config_version_label, versionName),
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline
+        )
+
         Spacer(Modifier.height(40.dp))
     }
     }
+
+    if (showLeaveFamilyDialog) {
+        AlertDialog(
+            onDismissRequest = { showLeaveFamilyDialog = false },
+            title = { Text(stringResource(R.string.config_leave_family_title)) },
+            text = { Text(stringResource(R.string.config_leave_family_message)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.leaveFamily()
+                        showLeaveFamilyDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text(stringResource(R.string.config_leave_family_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLeaveFamilyDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.Bold
+    )
+}
+
+@Composable
+private fun ThemeModeChip(
+    selected: Boolean,
+    label: String,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) }
+    )
+}
+
+@Composable
+private fun AccentChip(
+    selected: Boolean,
+    label: String,
+    swatch: Color,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        leadingIcon = {
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .clip(CircleShape)
+                    .background(swatch)
+            )
+        }
+    )
 }
 
 @Composable

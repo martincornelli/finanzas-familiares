@@ -48,10 +48,14 @@ class SetupWizardViewModel @Inject constructor(
     private val _joinError = MutableStateFlow<String?>(null)
     val joinError: StateFlow<String?> = _joinError.asStateFlow()
 
+    private val _setupError = MutableStateFlow<String?>(null)
+    val setupError: StateFlow<String?> = _setupError.asStateFlow()
+
     fun completeSetup(data: SetupWizardData) {
         viewModelScope.launch {
             _isSubmitting.value = true
             _joinError.value = null
+            _setupError.value = null
             try {
                 if (data.familyCode.isNotBlank()) {
                     val result = repo.joinFamily(data.familyCode.trim())
@@ -82,6 +86,8 @@ class SetupWizardViewModel @Inject constructor(
 
                 prefs.edit().putBoolean(PREF_SETUP_COMPLETED, true).apply()
                 _isCompleted.value = true
+            } catch (e: Exception) {
+                _setupError.value = context.getString(R.string.setup_submit_error)
             } finally {
                 _isSubmitting.value = false
             }
