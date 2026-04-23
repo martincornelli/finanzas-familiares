@@ -108,6 +108,7 @@ fun SummaryScreen(
     val incomeCurrency = config.incomeCurrency
     val primaryIncomeAmount = data?.primaryIncomeAmount(incomeCurrency) ?: 0.0
     val primaryIncomeUYU = data?.primaryIncomeInUYU(incomeCurrency) ?: 0.0
+    val totalIncomeUYU = data?.totalIncomeInUYU(incomeCurrency) ?: 0.0
     val donationsUYU = data?.donationsInUYU(incomeCurrency) ?: 0.0
     val totalObligationsUYU = data?.totalObligationsInUYU(incomeCurrency) ?: 0.0
     val margin = data?.marginInUYU(incomeCurrency) ?: 0.0
@@ -239,7 +240,7 @@ fun SummaryScreen(
                 ) {
                     HeroMiniMetric(
                         label = stringResource(R.string.analysis_income_metric),
-                        value = primaryIncomeUYU.formatUYU(),
+                        value = totalIncomeUYU.formatUYU(),
                         color = colors.content
                     )
                     HeroMiniMetric(
