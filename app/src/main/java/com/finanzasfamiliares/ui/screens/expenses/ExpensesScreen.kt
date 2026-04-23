@@ -26,12 +26,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Edit
@@ -42,7 +45,6 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocalHospital
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pets
-import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -89,11 +91,13 @@ import com.finanzasfamiliares.data.model.DebtEntry
 import com.finanzasfamiliares.data.model.FixedExpense
 import com.finanzasfamiliares.data.model.IncomeCurrency
 import com.finanzasfamiliares.data.model.MoneyEntry
+import com.finanzasfamiliares.ui.components.FinanceCard
 import com.finanzasfamiliares.ui.components.MonthHeader
 import com.finanzasfamiliares.ui.components.MonthSwipeContainer
 import com.finanzasfamiliares.ui.components.ReadOnlyBanner
 import com.finanzasfamiliares.ui.components.SectionHeader
 import com.finanzasfamiliares.ui.components.SelectionActionBar
+import com.finanzasfamiliares.ui.components.SoftIconBadge
 import com.finanzasfamiliares.ui.components.clearZeroOnFocus
 import com.finanzasfamiliares.ui.components.formatUSD
 import com.finanzasfamiliares.ui.components.formatUYU
@@ -701,26 +705,39 @@ fun ExpensesScreen(
                             )
                         }
                     }
-                    SummaryRowCompact(
-                        label = stringResource(R.string.expenses_filtered_total_uyu),
-                        value = visibleTotalUYU.formatUYU()
-                    )
-                    SummaryRowCompact(
-                        label = stringResource(R.string.expenses_filtered_total_usd),
-                        value = visibleTotalUSD.formatUSD()
-                    )
-                    SummaryRowCompact(
-                        label = stringResource(R.string.expenses_filtered_total),
-                        value = visibleTotalCalculated.formatUYU()
-                    )
-                    SummaryRowCompact(
-                        label = stringResource(R.string.expenses_paid_total),
-                        value = paidTotalCalculated.formatUYU()
-                    )
-                    SummaryRowCompact(
-                        label = stringResource(R.string.expenses_pending_total),
-                        value = pendingTotalCalculated.formatUYU()
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        ExpenseTotalCard(
+                            label = stringResource(R.string.expenses_filtered_total_uyu),
+                            value = visibleTotalUYU.formatUYU(),
+                            modifier = Modifier.weight(1f)
+                        )
+                        ExpenseTotalCard(
+                            label = stringResource(R.string.expenses_filtered_total_usd),
+                            value = visibleTotalUSD.formatUSD(),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    FinanceCard(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        borderColor = MaterialTheme.colorScheme.outlineVariant,
+                        contentPadding = PaddingValues(14.dp)
+                    ) {
+                        SummaryRowCompact(
+                            label = stringResource(R.string.expenses_filtered_total),
+                            value = visibleTotalCalculated.formatUYU()
+                        )
+                        SummaryRowCompact(
+                            label = stringResource(R.string.expenses_paid_total),
+                            value = paidTotalCalculated.formatUYU()
+                        )
+                        SummaryRowCompact(
+                            label = stringResource(R.string.expenses_pending_total),
+                            value = pendingTotalCalculated.formatUYU()
+                        )
+                    }
                 }
             }
 
@@ -728,6 +745,7 @@ fun ExpensesScreen(
                 SectionHeader(
                     title = stringResource(R.string.expenses_section_fixed),
                     total = fixedSectionTotal,
+                    icon = Icons.AutoMirrored.Filled.ReceiptLong,
                     expanded = fixedExpanded,
                     onClick = { toggleSection(ExpenseSection.FIXED) }
                 )
@@ -749,12 +767,13 @@ fun ExpensesScreen(
                 }
             }
 
-            item(contentType = "section_gap") { Spacer(Modifier.height(16.dp)); HorizontalDivider() }
+            item(contentType = "section_gap") { Spacer(Modifier.height(10.dp)) }
 
             item(contentType = "variable_header") {
                 SectionHeader(
                     title = stringResource(R.string.expenses_section_variable),
                     total = variableSectionTotal,
+                    icon = Icons.Default.ShoppingCart,
                     expanded = variableExpanded,
                     onClick = { toggleSection(ExpenseSection.VARIABLE) }
                 )
@@ -777,7 +796,7 @@ fun ExpensesScreen(
                 }
             }
 
-            item(contentType = "section_gap") { Spacer(Modifier.height(16.dp)); HorizontalDivider() }
+            item(contentType = "section_gap") { Spacer(Modifier.height(10.dp)) }
 
             item(contentType = "card_header") {
                 CardSectionHeader(
@@ -808,12 +827,13 @@ fun ExpensesScreen(
                 }
             }
 
-            item(contentType = "section_gap") { Spacer(Modifier.height(16.dp)); HorizontalDivider() }
+            item(contentType = "section_gap") { Spacer(Modifier.height(10.dp)) }
 
             item(contentType = "debt_header") {
                 SectionHeader(
                     title = stringResource(R.string.expenses_section_debt),
                     total = debtSectionTotal,
+                    icon = Icons.Default.AccountBalance,
                     expanded = debtExpanded,
                     onClick = { toggleSection(ExpenseSection.DEBT) }
                 )
@@ -1016,6 +1036,30 @@ private fun DuplicateExpenseDialog(
 }
 
 @Composable
+private fun ExpenseTotalCard(label: String, value: String, modifier: Modifier = Modifier) {
+    FinanceCard(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.surface,
+        borderColor = MaterialTheme.colorScheme.outlineVariant,
+        contentPadding = PaddingValues(14.dp)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Clip
+        )
+    }
+}
+
+@Composable
 private fun SummaryRowCompact(label: String, value: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -1038,15 +1082,21 @@ private fun CardSectionHeader(
     onPaymentCheckedChange: (Boolean) -> Unit,
     onClick: () -> Unit
 ) {
-    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        val titleMaxWidth = if (showPaymentToggle) maxWidth * 0.34f else maxWidth * 0.55f
+    FinanceCard(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        borderColor = MaterialTheme.colorScheme.outlineVariant,
+        contentPadding = PaddingValues(14.dp, 12.dp)
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val titleMaxWidth = if (showPaymentToggle) maxWidth * 0.46f else maxWidth * 0.62f
         val totalMinWidth = if (showPaymentToggle) 96.dp else 88.dp
 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(0.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1055,11 +1105,16 @@ private fun CardSectionHeader(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                SoftIconBadge(
+                    icon = Icons.Default.CreditCard,
+                    badgeSize = 40.dp,
+                    iconSize = 21.dp
+                )
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1100,6 +1155,7 @@ private fun CardSectionHeader(
             )
         }
     }
+}
 }
 
 private fun paymentRowColor(
@@ -2086,7 +2142,7 @@ private fun categoryIconFor(category: String): ImageVector {
         "belleza" -> Icons.Default.Face
         "reparaciones" -> Icons.Default.Build
         "hogar", "alquiler" -> Icons.Default.Home
-        "impuestos" -> Icons.Default.ReceiptLong
+        "impuestos" -> Icons.AutoMirrored.Filled.ReceiptLong
         "mascotas" -> Icons.Default.Pets
         else -> Icons.Default.Category
     }

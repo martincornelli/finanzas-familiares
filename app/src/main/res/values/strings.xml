@@ -14,6 +14,7 @@
     <string name="action_cancel">Cancelar</string>
     <string name="action_edit">Editar</string>
     <string name="action_delete">Eliminar</string>
+    <string name="action_add">Añadir</string>
     <string name="action_add_anyway">Agregar igual</string>
     <string name="action_select_all">Seleccionar todos</string>
     <string name="action_clear_selection">Deseleccionar todos</string>
@@ -77,9 +78,12 @@
     <string name="summary_margin_label">Margen disponible</string>
     <string name="summary_margin_hint">Disponible luego de gastos y donativos</string>
     <string name="summary_exchange_rate">Tipo de cambio</string>
+    <string name="summary_exchange_purchase">Compra</string>
+    <string name="summary_exchange_sale">Venta</string>
     <string name="summary_change_rate">Cambiar tipo de cambio</string>
     <string name="summary_primary_income">Ingreso Principal</string>
     <string name="summary_primary_income_in_pesos">-&gt; en pesos</string>
+    <string name="summary_primary_income_in_usd">-&gt; en dólares</string>
     <string name="summary_edit_primary_income">Editar ingreso principal</string>
     <string name="summary_variable_income">Ingresos Variables</string>
     <string name="summary_variable_income_item_fallback">Ingreso variable</string>

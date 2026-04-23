@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -109,16 +110,58 @@ fun SavingsScreen(
                     headerContent()
                     Spacer(Modifier.height(6.dp))
                 }
+                FinanceCard(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                    contentPadding = PaddingValues(22.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                stringResource(R.string.savings_total_label).uppercase(Locale("es", "UY")),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
+                            )
+                            Text(
+                                totalUYU.formatUYU(),
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                totalUSD.formatUSD(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
+                            )
+                        }
+                        SoftIconBadge(
+                            icon = Icons.Default.Savings,
+                            containerColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f),
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    Text(
+                        "${savings.size} ${stringResource(R.string.savings_title).lowercase(Locale("es", "UY"))}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f)
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
                 Text(
                     stringResource(R.string.savings_title),
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.ExtraBold
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(8.dp))
             }
 
             items(savings, key = { it.id }) { saving ->
-                Card(
+                val selected = selectedSavingIds.contains(saving.id)
+                FinanceCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .combinedClickable(
@@ -128,51 +171,68 @@ fun SavingsScreen(
                             },
                             onLongClick = { toggleSelection(saving.id) }
                         ),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (selectedSavingIds.contains(saving.id)) {
-                            MaterialTheme.colorScheme.secondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surface
-                        }
-                    )
+                    containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                    contentColor = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                    borderColor = MaterialTheme.colorScheme.outlineVariant
                 ) {
                     Row(
-                        Modifier.padding(16.dp),
+                        Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
+                        SoftIconBadge(
+                            icon = Icons.Default.Savings,
+                            badgeSize = 46.dp,
+                            iconSize = 22.dp,
+                            containerColor = if (selected) {
+                                MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.12f)
+                            } else {
+                                MaterialTheme.colorScheme.primaryContainer
+                            },
+                            contentColor = if (selected) {
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            }
+                        )
                         Column(Modifier.weight(1f)) {
-                            Text(saving.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(saving.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
                             val updatedText = saving.lastUpdated?.toDate()?.let {
                                 stringResource(R.string.savings_updated_at, dateFmt.format(it))
                             } ?: stringResource(R.string.savings_never_updated)
                             Text(
                                 updatedText,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.72f)
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
                             )
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(horizontalAlignment = Alignment.End) {
                             Text(
                                 if (saving.isInUSD()) saving.displayAmount().formatUSD() else saving.displayAmount().formatUYU(),
                                 style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.primary
                             )
                             if (selectedSavingIds.isEmpty()) {
-                                Spacer(Modifier.width(8.dp))
-                                IconButton(onClick = { editingSaving = saving }) {
-                                    Icon(
-                                        Icons.Default.Edit,
-                                        stringResource(R.string.savings_update_cd),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                IconButton(onClick = { deleteRequest = SavingDeleteRequest.Single(saving) }) {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        stringResource(R.string.action_delete),
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
+                                Row {
+                                    IconButton(onClick = { editingSaving = saving }) {
+                                        Icon(
+                                            Icons.Default.Edit,
+                                            stringResource(R.string.savings_update_cd),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    IconButton(onClick = { deleteRequest = SavingDeleteRequest.Single(saving) }) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            stringResource(R.string.action_delete),
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
                                 }
                             }
                         }

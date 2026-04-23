@@ -23,6 +23,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -106,48 +108,119 @@ fun AmountDialog(
 }
 
 @Composable
+fun FinanceCard(
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
+    contentColor: Color = MaterialTheme.colorScheme.onSurface,
+    borderColor: Color = MaterialTheme.colorScheme.outlineVariant,
+    contentPadding: PaddingValues = PaddingValues(18.dp),
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = containerColor,
+        contentColor = contentColor,
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Column(
+            modifier = Modifier.padding(contentPadding),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = content
+        )
+    }
+}
+
+@Composable
+fun SoftIconBadge(
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    contentColor: Color = MaterialTheme.colorScheme.primary,
+    badgeSize: androidx.compose.ui.unit.Dp = 52.dp,
+    iconSize: androidx.compose.ui.unit.Dp = 26.dp
+) {
+    Surface(
+        modifier = modifier.size(badgeSize),
+        shape = MaterialTheme.shapes.medium,
+        color = containerColor,
+        contentColor = contentColor
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(iconSize)
+            )
+        }
+    }
+}
+
+@Composable
 fun SectionHeader(
     title: String,
     total: String? = null,
     modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
     expanded: Boolean? = null,
     onClick: (() -> Unit)? = null,
     trailingContent: (@Composable RowScope.() -> Unit)? = null
 ) {
-    Row(
-        modifier
+    Surface(
+        modifier = modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-            if (expanded != null) {
-                Icon(
-                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (icon != null) {
+                    SoftIconBadge(
+                        icon = icon,
+                        badgeSize = 40.dp,
+                        iconSize = 21.dp
+                    )
+                }
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
+                if (expanded != null) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (total != null) {
-                Text(total, style = MaterialTheme.typography.titleSmall)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (total != null) {
+                    Text(
+                        total,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                trailingContent?.invoke(this)
             }
-            trailingContent?.invoke(this)
         }
     }
 }
@@ -257,75 +330,77 @@ fun MonthNavigationHeader(
     var showMonthPickerDialog by remember { mutableStateOf(false) }
 
     Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shadowElevation = 1.dp
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            IconButton(onClick = onGoPrevious, enabled = canGoPrevious) {
-                Icon(Icons.Default.ChevronLeft, contentDescription = stringResource(R.string.summary_prev_month_cd))
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                TextButton(onClick = { showMonthPickerDialog = true }) {
+                IconButton(onClick = onGoPrevious, enabled = canGoPrevious) {
+                    Icon(Icons.Default.ChevronLeft, contentDescription = stringResource(R.string.summary_prev_month_cd))
+                }
+                TextButton(
+                    onClick = { showMonthPickerDialog = true },
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(
                         text = monthLabel,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    if (!isCurrentMonth) {
-                        AssistChip(
-                            onClick = onGoToCurrentMonth,
-                            label = { Text(stringResource(R.string.summary_go_to_current_month)) },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Today,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(AssistChipDefaults.IconSize)
-                                )
+                IconButton(onClick = onGoNext, enabled = canGoNext) {
+                    Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.summary_next_month_cd))
+                }
+                if (onToggleHeaderPinned != null) {
+                    IconButton(onClick = onToggleHeaderPinned) {
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = stringResource(
+                                if (isHeaderPinned) R.string.action_unpin_header else R.string.action_pin_header
+                            ),
+                            tint = if (isHeaderPinned) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
                             }
                         )
                     }
-                    AssistChip(
-                        onClick = { showGenerateDialog = true },
-                        enabled = !isGenerating,
-                        label = { Text(stringResource(R.string.summary_generate_months)) }
-                    )
                 }
             }
-            IconButton(onClick = onGoNext, enabled = canGoNext) {
-                Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.summary_next_month_cd))
-            }
-            if (onToggleHeaderPinned != null) {
-                IconButton(onClick = onToggleHeaderPinned) {
-                    Icon(
-                        imageVector = Icons.Default.PushPin,
-                        contentDescription = stringResource(
-                            if (isHeaderPinned) R.string.action_unpin_header else R.string.action_pin_header
-                        ),
-                        tint = if (isHeaderPinned) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (!isCurrentMonth) {
+                    AssistChip(
+                        onClick = onGoToCurrentMonth,
+                        label = { Text(stringResource(R.string.summary_go_to_current_month)) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Today,
+                                contentDescription = null,
+                                modifier = Modifier.size(AssistChipDefaults.IconSize)
+                            )
                         }
                     )
                 }
+                AssistChip(
+                    onClick = { showGenerateDialog = true },
+                    enabled = !isGenerating,
+                    label = { Text(stringResource(R.string.summary_generate_months)) }
+                )
             }
         }
     }

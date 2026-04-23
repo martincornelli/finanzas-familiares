@@ -1,13 +1,12 @@
 package com.finanzasfamiliares.ui.screens.summary
 
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,14 +15,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CurrencyExchange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.Wallet
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,7 +41,6 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,17 +52,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.finanzasfamiliares.R
 import com.finanzasfamiliares.data.model.IncomeCurrency
 import com.finanzasfamiliares.data.model.MoneyEntry
+import com.finanzasfamiliares.ui.components.FinanceCard
 import com.finanzasfamiliares.ui.components.MonthNavigationHeader
 import com.finanzasfamiliares.ui.components.MonthSwipeContainer
 import com.finanzasfamiliares.ui.components.SelectionActionBar
+import com.finanzasfamiliares.ui.components.SoftIconBadge
 import com.finanzasfamiliares.ui.components.SummaryRow
 import com.finanzasfamiliares.ui.components.clearZeroOnFocus
 import com.finanzasfamiliares.ui.components.formatUSD
@@ -106,6 +114,7 @@ fun SummaryScreen(
 
     var showIncomeDialog by remember { mutableStateOf(false) }
     var showRateDialog by remember { mutableStateOf(false) }
+    var showSaleRateInSummary by remember { mutableStateOf(false) }
     var showVariableIncomeDialog by remember { mutableStateOf(false) }
     var showDeleteMonthDialog by remember { mutableStateOf(false) }
     var editingVariableIncome by remember { mutableStateOf<MoneyEntry?>(null) }
@@ -188,94 +197,138 @@ fun SummaryScreen(
                 yellowThreshold = config.marginYellowThresholdPct
             )
 
-            Box(
-                Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .fillMaxWidth()
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(colors.background)
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
+            FinanceCard(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                containerColor = colors.background,
+                contentColor = colors.content,
+                borderColor = colors.content.copy(alpha = 0.20f)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        stringResource(R.string.summary_margin_label),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = colors.content
-                    )
-                    Text(
-                        margin.formatUYU(),
-                        style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = colors.content
-                    )
-                    Text(
-                        stringResource(R.string.summary_margin_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.content
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    HorizontalDivider(color = colors.content.copy(alpha = 0.22f))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        HeroMiniMetric(
-                            label = stringResource(R.string.analysis_income_metric),
-                            value = primaryIncomeUYU.formatUYU(),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            stringResource(R.string.summary_margin_label).uppercase(Locale("es", "UY")),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.content.copy(alpha = 0.82f)
+                        )
+                        Text(
+                            margin.formatUYU(),
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.ExtraBold,
                             color = colors.content
                         )
-                        HeroMiniMetric(
-                            label = stringResource(R.string.analysis_obligations_metric),
-                            value = totalObligationsUYU.formatUYU(),
-                            color = colors.content,
-                            alignEnd = true
+                        Text(
+                            stringResource(R.string.summary_margin_hint),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.content.copy(alpha = 0.78f)
                         )
                     }
+                    SoftIconBadge(
+                        icon = Icons.Default.Wallet,
+                        containerColor = colors.content.copy(alpha = 0.12f),
+                        contentColor = colors.content
+                    )
+                }
+                HorizontalDivider(color = colors.content.copy(alpha = 0.18f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    HeroMiniMetric(
+                        label = stringResource(R.string.analysis_income_metric),
+                        value = primaryIncomeUYU.formatUYU(),
+                        color = colors.content
+                    )
+                    HeroMiniMetric(
+                        label = stringResource(R.string.analysis_obligations_metric),
+                        value = totalObligationsUYU.formatUYU(),
+                        color = colors.content,
+                        alignEnd = true
+                    )
                 }
             }
 
-            SummaryPanel {
-                SummaryRow(stringResource(R.string.config_base_rate_label), "$ ${"%.2f".format(data?.exchangeRate ?: 0.0)}")
-                SummaryRow(stringResource(R.string.config_card_offset_label), "$ ${"%.2f".format(data?.cardExchangeRate ?: 0.0)}")
-                TextButton(onClick = { showRateDialog = true }, Modifier.padding(start = 8.dp)) {
-                    Text(stringResource(R.string.summary_change_rate), style = MaterialTheme.typography.labelSmall)
-                }
-            }
-
-            SummaryPanel {
-                SummaryRow(
-                    stringResource(R.string.summary_primary_income),
-                    if (incomeCurrency == IncomeCurrency.UYU) primaryIncomeAmount.formatUYU() else primaryIncomeAmount.formatUSD()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ExchangeRateCard(
+                    purchaseRate = data?.exchangeRate ?: 0.0,
+                    saleRate = data?.cardExchangeRate ?: 0.0,
+                    showingSaleRate = showSaleRateInSummary,
+                    onShowPurchaseRate = { showSaleRateInSummary = false },
+                    onShowSaleRate = { showSaleRateInSummary = true },
+                    modifier = Modifier.weight(1f),
+                    onClick = { showRateDialog = true }
                 )
-                if (incomeCurrency == IncomeCurrency.USD) {
-                    SummaryRow(stringResource(R.string.summary_primary_income_in_pesos), primaryIncomeUYU.formatUYU())
-                }
-                TextButton(onClick = { showIncomeDialog = true }, Modifier.padding(start = 8.dp)) {
-                    Text(stringResource(R.string.summary_edit_primary_income), style = MaterialTheme.typography.labelSmall)
-                }
+                SummaryMetricCard(
+                    icon = Icons.Default.Payments,
+                    title = stringResource(R.string.summary_primary_income),
+                    subtitle = if (incomeCurrency == IncomeCurrency.USD) {
+                        stringResource(R.string.summary_primary_income_in_usd)
+                    } else {
+                        stringResource(R.string.summary_primary_income_in_pesos)
+                    },
+                    value = if (incomeCurrency == IncomeCurrency.UYU) {
+                        primaryIncomeAmount.formatUYU()
+                    } else {
+                        primaryIncomeAmount.formatUSD()
+                    },
+                    modifier = Modifier.weight(1f),
+                    onClick = { showIncomeDialog = true }
+                )
             }
 
-            SummaryPanel {
-                SummaryRow(stringResource(R.string.summary_variable_income), (data?.variableIncomeUYU ?: 0.0).formatUYU())
-                if (variableIncomes.isNotEmpty()) {
-                    TextButton(
-                        onClick = { variableIncomeExpanded = !variableIncomeExpanded },
-                        modifier = Modifier.padding(start = 8.dp)
+            FinanceCard(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
+                borderColor = MaterialTheme.colorScheme.outlineVariant
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        SoftIconBadge(icon = Icons.Default.AccountBalanceWallet)
+                        Column {
+                            Text(
+                                stringResource(R.string.summary_variable_income),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                (data?.variableIncomeUYU ?: 0.0).formatUYU(),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    Button(onClick = { showVariableIncomeDialog = true }) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.size(6.dp))
+                        Text(stringResource(R.string.action_add))
+                    }
+                }
+                if (variableIncomes.isNotEmpty()) {
+                    TextButton(onClick = { variableIncomeExpanded = !variableIncomeExpanded }) {
                         Text(
                             stringResource(
                                 if (variableIncomeExpanded) R.string.summary_variable_income_collapse
                                 else R.string.summary_variable_income_expand
-                            ),
-                            style = MaterialTheme.typography.labelSmall
+                            )
                         )
                     }
-                }
-                TextButton(onClick = { showVariableIncomeDialog = true }, modifier = Modifier.padding(start = 8.dp)) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.size(6.dp))
-                    Text(stringResource(R.string.summary_add_variable_income), style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -297,14 +350,35 @@ fun SummaryScreen(
         }
 
         item {
-            SummaryPanel {
+            FinanceCard(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
+                borderColor = MaterialTheme.colorScheme.outlineVariant
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SoftIconBadge(icon = Icons.AutoMirrored.Filled.ReceiptLong)
+                    Column {
+                        Text(
+                            stringResource(R.string.summary_total_obligations),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            totalObligationsUYU.formatUYU(),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
                 SummaryRow(stringResource(R.string.summary_donations), donationsUYU.formatUYU())
                 SummaryRow(stringResource(R.string.summary_fixed_expenses), (data?.fixedExpenses?.sumOf { it.totalUYU(data?.cardExchangeRate ?: 0.0) } ?: 0.0).formatUYU())
                 SummaryRow(stringResource(R.string.summary_variable_expenses), (data?.variableExpenses?.sumOf { it.totalUYU(data?.cardExchangeRate ?: 0.0) } ?: 0.0).formatUYU())
                 SummaryRow(stringResource(R.string.summary_credit_card), (data?.cardExpenses?.sumOf { it.totalUYU(data?.cardExchangeRate ?: 0.0) } ?: 0.0).formatUYU())
                 SummaryRow(stringResource(R.string.summary_debts), (data?.debts?.sumOf { it.totalUYU(data?.cardExchangeRate ?: 0.0) } ?: 0.0).formatUYU())
-                HorizontalDivider(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-                SummaryRow(stringResource(R.string.summary_total_obligations), totalObligationsUYU.formatUYU())
             }
 
             Spacer(Modifier.height(24.dp))
@@ -476,6 +550,168 @@ fun SummaryScreen(
 }
 
 @Composable
+private fun ExchangeRateCard(
+    purchaseRate: Double,
+    saleRate: Double,
+    showingSaleRate: Boolean,
+    onShowPurchaseRate: () -> Unit,
+    onShowSaleRate: () -> Unit,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val subtitle = stringResource(
+        if (showingSaleRate) R.string.config_card_offset_label
+        else R.string.config_base_rate_label
+    )
+    val value = "$${"%.2f".format(if (showingSaleRate) saleRate else purchaseRate)}"
+    FinanceCard(
+        modifier = modifier.pointerInput(showingSaleRate) {
+            var dragDistance = 0f
+            detectHorizontalDragGestures(
+                onDragStart = { dragDistance = 0f },
+                onHorizontalDrag = { _, dragAmount ->
+                    dragDistance += dragAmount
+                },
+                onDragEnd = {
+                    when {
+                        dragDistance < -48f -> onShowSaleRate()
+                        dragDistance > 48f -> onShowPurchaseRate()
+                    }
+                }
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.surface,
+        borderColor = MaterialTheme.colorScheme.outlineVariant,
+        contentPadding = PaddingValues(14.dp)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SoftIconBadge(
+                icon = Icons.Default.CurrencyExchange,
+                badgeSize = 44.dp,
+                iconSize = 22.dp
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.summary_exchange_rate),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(36.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            IconButton(
+                onClick = onShowPurchaseRate,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                    contentDescription = stringResource(R.string.summary_exchange_purchase),
+                    modifier = Modifier.size(22.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                        alpha = if (showingSaleRate) 0.64f else 0.24f
+                    )
+                )
+            }
+            Text(
+                value,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 28.dp),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                softWrap = false,
+                textAlign = TextAlign.Center
+            )
+            IconButton(
+                onClick = onShowSaleRate,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = stringResource(R.string.summary_exchange_sale),
+                    modifier = Modifier.size(22.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                        alpha = if (showingSaleRate) 0.24f else 0.64f
+                    )
+                )
+            }
+        }
+        TextButton(onClick = onClick, modifier = Modifier.align(Alignment.End)) {
+            Text(stringResource(R.string.action_edit), style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun SummaryMetricCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    FinanceCard(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.surface,
+        borderColor = MaterialTheme.colorScheme.outlineVariant,
+        contentPadding = PaddingValues(14.dp)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SoftIconBadge(
+                icon = icon,
+                badgeSize = 44.dp,
+                iconSize = 22.dp
+            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Text(
+            value,
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        TextButton(onClick = onClick, modifier = Modifier.align(Alignment.End)) {
+            Text(stringResource(R.string.action_edit), style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
 private fun HeroMiniMetric(
     label: String,
     value: String,
@@ -494,22 +730,6 @@ private fun HeroMiniMetric(
             fontWeight = FontWeight.Bold,
             color = color
         )
-    }
-}
-
-@Composable
-private fun SummaryPanel(content: @Composable () -> Unit) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    ) {
-        Column(Modifier.padding(vertical = 8.dp)) {
-            content()
-        }
     }
 }
 
