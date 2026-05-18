@@ -33,6 +33,8 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const FAMILY_STORAGE_KEY = "finanzas_web_active_family_id";
+const THEME_STORAGE_KEY = "finanzas_web_theme_mode";
+const ACCENT_STORAGE_KEY = "finanzas_web_accent_color";
 const JOIN_CODES_COLLECTION = "familyJoinCodes";
 const INCOME_CURRENCY = {
   USD: "USD",
@@ -43,6 +45,8 @@ const CARD_KIND = {
   RECURRING: "RECURRING",
   INSTALLMENT: "INSTALLMENT"
 };
+const THEME_MODES = ["system", "light", "dark"];
+const ACCENT_COLORS = ["green", "blue", "teal", "indigo", "violet", "slate"];
 
 const defaultCategories = [
   "Comida",
@@ -89,7 +93,8 @@ const state = {
   configUnsubscribe: null,
   monthsUnsubscribe: null,
   isBooting: true,
-  fatalError: null
+  fatalError: null,
+  appearance: loadAppearance()
 };
 
 const appShell = document.querySelector("#app");
@@ -104,7 +109,12 @@ const currentMonthButton = document.querySelector("#current-month");
 const generateMonthButton = document.querySelector("#generate-month");
 
 bindChrome();
+applyAppearance();
 boot();
+
+window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener("change", () => {
+  if (state.appearance.themeMode === "system") applyAppearance();
+});
 
 async function boot() {
   try {
@@ -234,6 +244,40 @@ function bindChrome() {
   currentMonthButton.addEventListener("click", () => setMonth(currentYearMonth()));
   generateMonthButton.addEventListener("click", generateNextMonth);
   monthPicker.addEventListener("click", openMonthPicker);
+}
+
+function loadAppearance() {
+  const themeMode = localStorage.getItem(THEME_STORAGE_KEY);
+  const accentColor = localStorage.getItem(ACCENT_STORAGE_KEY);
+  return {
+    themeMode: THEME_MODES.includes(themeMode) ? themeMode : "system",
+    accentColor: ACCENT_COLORS.includes(accentColor) ? accentColor : "green"
+  };
+}
+
+function applyAppearance() {
+  const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+  const resolvedTheme = state.appearance.themeMode === "system"
+    ? (prefersDark ? "dark" : "light")
+    : state.appearance.themeMode;
+  document.documentElement.dataset.theme = resolvedTheme;
+  document.documentElement.dataset.accent = state.appearance.accentColor;
+}
+
+function updateThemeMode(themeMode) {
+  if (!THEME_MODES.includes(themeMode)) return;
+  state.appearance.themeMode = themeMode;
+  localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+  applyAppearance();
+  render();
+}
+
+function updateAccentColor(accentColor) {
+  if (!ACCENT_COLORS.includes(accentColor)) return;
+  state.appearance.accentColor = accentColor;
+  localStorage.setItem(ACCENT_STORAGE_KEY, accentColor);
+  applyAppearance();
+  render();
 }
 
 function routeFromHash() {
@@ -599,6 +643,31 @@ function renderConfig() {
   screen.innerHTML = `
     <div class="screen-grid two-col">
       <section class="finance-card">
+        ${sectionTitle("Apariencia", "A", "")}
+        <div class="form-grid">
+          <div class="field">
+            <label>Modo</label>
+            <div class="radio-row">
+              ${themeChip("system", "Sistema")}
+              ${themeChip("light", "Claro")}
+              ${themeChip("dark", "Oscuro")}
+            </div>
+          </div>
+          <div class="field">
+            <label>Color</label>
+            <div class="radio-row">
+              ${accentChip("green", "Verde")}
+              ${accentChip("blue", "Azul")}
+              ${accentChip("teal", "Teal")}
+              ${accentChip("indigo", "Indigo")}
+              ${accentChip("violet", "Violeta")}
+              ${accentChip("slate", "Slate")}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="finance-card">
         ${sectionTitle("Configuracion", "C", "")}
         <form id="config-form" class="form-grid">
           <div class="field">
@@ -620,11 +689,11 @@ function renderConfig() {
           </div>
           <div class="inline-fields">
             <div class="field">
-              <label for="green-threshold">Verde desde</label>
+              <label class="label-with-swatch" for="green-threshold"><span class="threshold-swatch green-swatch"></span>Verde desde</label>
               <input id="green-threshold" class="input" inputmode="decimal" value="${escapeAttr(toInput(config.marginGreenThresholdPct))}">
             </div>
             <div class="field">
-              <label for="yellow-threshold">Amarillo desde</label>
+              <label class="label-with-swatch" for="yellow-threshold"><span class="threshold-swatch yellow-swatch"></span>Amarillo desde</label>
               <input id="yellow-threshold" class="input" inputmode="decimal" value="${escapeAttr(toInput(config.marginYellowThresholdPct))}">
             </div>
           </div>
@@ -636,7 +705,7 @@ function renderConfig() {
         ${sectionTitle("Familia", "F", "")}
         <div class="metric-grid">
           ${metricPill("Codigo", state.family?.joinCode || "Pendiente")}
-          ${metricPill("Miembros", String(state.family?.memberIds?.length || 1))}
+          ${metricPill("Sesiones autorizadas", String(state.family?.memberIds?.length || 1))}
         </div>
         <div class="divider"></div>
         <form id="join-other-family-form" class="form-grid">
@@ -649,6 +718,12 @@ function renderConfig() {
       </section>
     </div>
   `;
+  screen.querySelectorAll("[data-theme-mode]").forEach((button) => {
+    button.addEventListener("click", () => updateThemeMode(button.dataset.themeMode));
+  });
+  screen.querySelectorAll("[data-accent-color]").forEach((button) => {
+    button.addEventListener("click", () => updateAccentColor(button.dataset.accentColor));
+  });
   screen.querySelector("#config-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     await withToastError(async () => {
@@ -949,10 +1024,11 @@ function openExpenseDialog(field, item = null) {
       dialog.querySelector("#expense-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const entry = readExpenseEntry(dialog, field, item);
+        const applyToFuture = Boolean(dialog.querySelector("#apply-to-future")?.checked);
         await withToastError(async () => {
-          await upsertArrayItem(field, entry);
+          await upsertArrayItem(field, entry, { applyToFuture });
           closeModal();
-          toastMessage("Movimiento guardado");
+          toastMessage(applyToFuture ? "Movimiento guardado en meses futuros" : "Movimiento guardado");
         });
       });
     }
@@ -1107,6 +1183,8 @@ function moneyEntryForm(formId, item = null, nameLabel = "Nombre") {
 
 function expenseForm(field, item = null) {
   const base = moneyEntryForm("expense-form", item, "Nombre");
+  const showApplyFuture = field === "fixedExpenses" || field === "cardExpenses";
+  const defaultApplyFuture = field === "fixedExpenses" && item == null;
   const cardExtras = field === "cardExpenses" ? `
     <div class="field">
       <label for="expense-kind">Tipo</label>
@@ -1116,6 +1194,12 @@ function expenseForm(field, item = null) {
         <option value="INSTALLMENT" ${item?.kind === "INSTALLMENT" ? "selected" : ""}>Cuotas</option>
       </select>
     </div>
+  ` : "";
+  const futureExtras = showApplyFuture ? `
+    <label class="checkbox-line">
+      <input id="apply-to-future" type="checkbox" ${defaultApplyFuture ? "checked" : ""}>
+      <span>Aplicar a los meses siguientes</span>
+    </label>
   ` : "";
   const installmentExtras = field === "cardExpenses" || field === "debts" ? `
     <div id="installment-fields" class="inline-fields ${field === "cardExpenses" && item?.kind !== "INSTALLMENT" ? "hidden" : ""}">
@@ -1129,7 +1213,7 @@ function expenseForm(field, item = null) {
       </div>
     </div>
   ` : "";
-  return base.replace("</form>", `${cardExtras}${installmentExtras}</form>`);
+  return base.replace("</form>", `${cardExtras}${installmentExtras}${futureExtras}</form>`);
 }
 
 function readMoneyEntry(root, item = null) {
@@ -1325,12 +1409,60 @@ async function saveMonth(month) {
   await setDoc(monthRef(clean.yearMonth), clean);
 }
 
-async function upsertArrayItem(field, item) {
+async function upsertArrayItem(field, item, options = {}) {
   const list = [...(state.month[field] || [])];
   const index = list.findIndex((entry) => entry.id === item.id);
   if (index >= 0) list[index] = item;
   else list.push(item);
   await saveMonth({ ...state.month, [field]: list });
+  if (options.applyToFuture) {
+    await applyItemToFutureMonths(field, item);
+  }
+}
+
+async function applyItemToFutureMonths(field, item) {
+  const futureKeys = state.availableMonths.filter((key) => key > state.yearMonth).sort();
+  if (field === "fixedExpenses") {
+    for (const key of futureKeys) {
+      const snap = await getDoc(monthRef(key));
+      if (!snap.exists()) continue;
+      const future = normalizeMonth(snap.data(), key);
+      const items = [...future.fixedExpenses];
+      const index = items.findIndex((entry) => entry.id === item.id);
+      if (index >= 0) {
+        items[index] = { ...item, pinned: true, paid: isPaid(items[index]) };
+      } else {
+        items.push({ ...item, pinned: true, paid: false });
+      }
+      await setDoc(monthRef(key), { ...future, fixedExpenses: items });
+    }
+  }
+  if (field === "cardExpenses") {
+    let propagated = advanceCardExpense(item);
+    for (const key of futureKeys) {
+      const snap = await getDoc(monthRef(key));
+      if (!snap.exists()) continue;
+      const future = normalizeMonth(snap.data(), key);
+      const items = [...future.cardExpenses];
+      const index = items.findIndex((entry) => entry.id === item.id);
+      let changed = false;
+      if (propagated) {
+        const nextItem = index >= 0
+          ? { ...propagated, paid: isPaid(items[index]) }
+          : { ...propagated, paid: false };
+        if (index >= 0) items[index] = nextItem;
+        else items.push(nextItem);
+        changed = true;
+      } else if (index >= 0) {
+        items.splice(index, 1);
+        changed = true;
+      }
+      if (changed) {
+        await setDoc(monthRef(key), { ...future, cardExpenses: items });
+      }
+      propagated = propagated ? advanceCardExpense(propagated) : null;
+    }
+  }
 }
 
 async function deleteItem(field, id) {
@@ -1594,6 +1726,21 @@ function sectionTitle(title, icon, trailing) {
       </div>
       <div>${trailing || ""}</div>
     </div>
+  `;
+}
+
+function themeChip(value, label) {
+  const active = state.appearance.themeMode === value ? "active" : "";
+  return `<button class="filter-chip ${active}" data-theme-mode="${escapeAttr(value)}" type="button">${escapeHtml(label)}</button>`;
+}
+
+function accentChip(value, label) {
+  const active = state.appearance.accentColor === value ? "active" : "";
+  return `
+    <button class="filter-chip accent-choice ${active}" data-accent-color="${escapeAttr(value)}" type="button">
+      <span class="accent-swatch accent-${escapeAttr(value)}"></span>
+      ${escapeHtml(label)}
+    </button>
   `;
 }
 
