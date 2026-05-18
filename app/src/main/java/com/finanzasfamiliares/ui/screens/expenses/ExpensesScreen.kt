@@ -528,32 +528,24 @@ fun ExpensesScreen(
         matchedVariableExpenses,
         matchedCardExpenses,
         matchedDebts,
-        fixedExpanded,
-        variableExpanded,
-        cardExpanded,
-        debtExpanded,
         cardRate
     ) {
-        (if (fixedExpanded) matchedFixedExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
-            (if (variableExpanded) matchedVariableExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
-            (if (cardExpanded) matchedCardExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
-            (if (debtExpanded) matchedDebts.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0)
+        matchedFixedExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } +
+            matchedVariableExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } +
+            matchedCardExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) } +
+            matchedDebts.filter { it.isPaid }.sumOf { it.totalUYU(cardRate) }
     }
     val pendingTotalCalculated = remember(
         matchedFixedExpenses,
         matchedVariableExpenses,
         matchedCardExpenses,
         matchedDebts,
-        fixedExpanded,
-        variableExpanded,
-        cardExpanded,
-        debtExpanded,
         cardRate
     ) {
-        (if (fixedExpanded) matchedFixedExpenses.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
-            (if (variableExpanded) matchedVariableExpenses.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
-            (if (cardExpanded) matchedCardExpenses.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0) +
-            (if (debtExpanded) matchedDebts.filter { !it.isPaid }.sumOf { it.totalUYU(cardRate) } else 0.0)
+        matchedFixedExpenses.filterNot { it.isPaid }.sumOf { it.totalUYU(cardRate) } +
+            matchedVariableExpenses.filterNot { it.isPaid }.sumOf { it.totalUYU(cardRate) } +
+            matchedCardExpenses.filterNot { it.isPaid }.sumOf { it.totalUYU(cardRate) } +
+            matchedDebts.filterNot { it.isPaid }.sumOf { it.totalUYU(cardRate) }
     }
     val fixedSectionTotal = remember(filteredFixedExpenses, cardRate) {
         filteredFixedExpenses.sumOf { it.totalUYU(cardRate) }.formatUYU()

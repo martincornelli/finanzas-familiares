@@ -127,16 +127,19 @@ fun SavingsScreen(
                                 style = MaterialTheme.typography.labelLarge,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
                             )
-                            Text(
-                                totalUYU.formatUYU(),
-                                style = MaterialTheme.typography.headlineLarge,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                            Text(
-                                totalUSD.formatUSD(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
-                            )
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                SavingsTotalAmount(
+                                    label = stringResource(R.string.savings_total_label_uyu),
+                                    value = totalUYU.formatUYU()
+                                )
+                                SavingsTotalAmount(
+                                    label = stringResource(R.string.savings_total_label_usd),
+                                    value = totalUSD.formatUSD()
+                                )
+                            }
                         }
                         SoftIconBadge(
                             icon = Icons.Default.Savings,
@@ -308,6 +311,25 @@ fun SavingsScreen(
                     Text(stringResource(R.string.action_cancel))
                 }
             }
+        )
+    }
+}
+
+@Composable
+private fun SavingsTotalAmount(
+    label: String,
+    value: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold
         )
     }
 }

@@ -497,6 +497,11 @@ class FinanceRepository @Inject constructor(
         }
     }
 
+    suspend fun updateAvailableBalanceOverride(yearMonth: String, amountUYU: Double?) {
+        val month = ensureMonthDocument(yearMonth)
+        saveMonth(month.copy(availableBalanceOverrideUYU = amountUYU))
+    }
+
     suspend fun updateExchangeSettingsFromCurrentMonth(rate: Double, cardExchangeOffset: Double) {
         val fmt = DateTimeFormatter.ofPattern("yyyy-MM")
         val currentKey = YearMonth.now().format(fmt)

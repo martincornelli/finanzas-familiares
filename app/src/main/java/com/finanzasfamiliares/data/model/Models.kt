@@ -56,7 +56,8 @@ data class MonthData(
     val fixedExpenses: List<FixedExpense> = emptyList(),
     val variableExpenses: List<MoneyEntry> = emptyList(),
     val cardExpenses: List<CardExpense> = emptyList(),
-    val debts: List<DebtEntry> = emptyList()
+    val debts: List<DebtEntry> = emptyList(),
+    val availableBalanceOverrideUYU: Double? = null
 ) {
     @get:Exclude
     val cardExchangeRate: Double get() = exchangeRate + cardExchangeOffset
@@ -101,6 +102,34 @@ data class MonthData(
 
     @Exclude
     fun marginInUYU(currency: String): Double = totalIncomeInUYU(currency) - totalObligationsInUYU(currency)
+
+    @Exclude
+    fun paidObligationsInUYU(currency: String): Double =
+        donations.filter { it.isPaid }.sumOf { it.totalUYU(primaryIncomeInUYU(currency), cardExchangeRate) } +
+        fixedExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardExchangeRate) } +
+        variableExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardExchangeRate) } +
+        cardExpenses.filter { it.isPaid }.sumOf { it.totalUYU(cardExchangeRate) } +
+        debts.filter { it.isPaid }.sumOf { it.totalUYU(cardExchangeRate) }
+
+    @Exclude
+    fun pendingObligationsInUYU(currency: String): Double =
+        donations.filterNot { it.isPaid }.sumOf { it.totalUYU(primaryIncomeInUYU(currency), cardExchangeRate) } +
+        fixedExpenses.filterNot { it.isPaid }.sumOf { it.totalUYU(cardExchangeRate) } +
+        variableExpenses.filterNot { it.isPaid }.sumOf { it.totalUYU(cardExchangeRate) } +
+        cardExpenses.filterNot { it.isPaid }.sumOf { it.totalUYU(cardExchangeRate) } +
+        debts.filterNot { it.isPaid }.sumOf { it.totalUYU(cardExchangeRate) }
+
+    @Exclude
+    fun calculatedAvailableBalanceInUYU(currency: String): Double =
+        totalIncomeInUYU(currency) - paidObligationsInUYU(currency)
+
+    @Exclude
+    fun availableBalanceInUYU(currency: String): Double =
+        availableBalanceOverrideUYU ?: calculatedAvailableBalanceInUYU(currency)
+
+    @Exclude
+    fun availableMarginInUYU(currency: String): Double =
+        availableBalanceInUYU(currency) - pendingObligationsInUYU(currency)
 }
 
 @IgnoreExtraProperties

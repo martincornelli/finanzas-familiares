@@ -2,8 +2,6 @@ package com.finanzasfamiliares.ui.screens.summary
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -41,6 +39,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -53,7 +52,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -107,13 +105,16 @@ fun SummaryScreen(
     val config by viewModel.currentConfig.collectAsState()
     val incomeCurrency = config.incomeCurrency
     val primaryIncomeAmount = data?.primaryIncomeAmount(incomeCurrency) ?: 0.0
-    val primaryIncomeUYU = data?.primaryIncomeInUYU(incomeCurrency) ?: 0.0
-    val totalIncomeUYU = data?.totalIncomeInUYU(incomeCurrency) ?: 0.0
     val donationsUYU = data?.donationsInUYU(incomeCurrency) ?: 0.0
     val totalObligationsUYU = data?.totalObligationsInUYU(incomeCurrency) ?: 0.0
-    val margin = data?.marginInUYU(incomeCurrency) ?: 0.0
+    val calculatedAvailableBalanceUYU = data?.calculatedAvailableBalanceInUYU(incomeCurrency) ?: 0.0
+    val availableBalanceUYU = data?.availableBalanceInUYU(incomeCurrency) ?: 0.0
+    val pendingObligationsUYU = data?.pendingObligationsInUYU(incomeCurrency) ?: 0.0
+    val margin = data?.availableMarginInUYU(incomeCurrency) ?: 0.0
+    val hasAvailableBalanceOverride = data?.availableBalanceOverrideUYU != null
 
     var showIncomeDialog by remember { mutableStateOf(false) }
+    var showAvailableBalanceDialog by remember { mutableStateOf(false) }
     var showRateDialog by remember { mutableStateOf(false) }
     var showSaleRateInSummary by remember { mutableStateOf(false) }
     var showVariableIncomeDialog by remember { mutableStateOf(false) }
@@ -209,7 +210,12 @@ fun SummaryScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.Top
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text(
                             stringResource(R.string.summary_margin_label).uppercase(Locale("es", "UY")),
                             style = MaterialTheme.typography.labelLarge,
@@ -222,16 +228,38 @@ fun SummaryScreen(
                             color = colors.content
                         )
                         Text(
-                            stringResource(R.string.summary_margin_hint),
+                            stringResource(
+                                if (hasAvailableBalanceOverride) {
+                                    R.string.summary_margin_hint_adjusted
+                                } else {
+                                    R.string.summary_margin_hint
+                                }
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = colors.content.copy(alpha = 0.78f)
+                            color = colors.content.copy(alpha = 0.78f),
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-                    SoftIconBadge(
-                        icon = Icons.Default.Wallet,
-                        containerColor = colors.content.copy(alpha = 0.12f),
-                        contentColor = colors.content
-                    )
+                    IconButton(
+                        onClick = { showAvailableBalanceDialog = true },
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(52.dp),
+                            shape = MaterialTheme.shapes.medium,
+                            color = colors.content.copy(alpha = 0.12f),
+                            contentColor = colors.content
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Wallet,
+                                    contentDescription = stringResource(R.string.summary_edit_available_balance),
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+                    }
                 }
                 HorizontalDivider(color = colors.content.copy(alpha = 0.18f))
                 Row(
@@ -239,13 +267,13 @@ fun SummaryScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     HeroMiniMetric(
-                        label = stringResource(R.string.analysis_income_metric),
-                        value = totalIncomeUYU.formatUYU(),
+                        label = stringResource(R.string.summary_available_balance),
+                        value = availableBalanceUYU.formatUYU(),
                         color = colors.content
                     )
                     HeroMiniMetric(
-                        label = stringResource(R.string.analysis_obligations_metric),
-                        value = totalObligationsUYU.formatUYU(),
+                        label = stringResource(R.string.summary_pending_obligations),
+                        value = pendingObligationsUYU.formatUYU(),
                         color = colors.content,
                         alignEnd = true
                     )
@@ -421,6 +449,22 @@ fun SummaryScreen(
             onDismiss = { showIncomeDialog = false }
         )
     }
+    if (showAvailableBalanceDialog) {
+        AvailableBalanceDialog(
+            initialValue = availableBalanceUYU,
+            calculatedValue = calculatedAvailableBalanceUYU,
+            hasManualOverride = hasAvailableBalanceOverride,
+            onConfirm = { amount ->
+                viewModel.updateAvailableBalanceOverride(amount)
+                showAvailableBalanceDialog = false
+            },
+            onRestoreAutomatic = {
+                viewModel.clearAvailableBalanceOverride()
+                showAvailableBalanceDialog = false
+            },
+            onDismiss = { showAvailableBalanceDialog = false }
+        )
+    }
     if (showRateDialog) {
         ExchangeSettingsDialog(
             title = stringResource(R.string.dialog_rate_title),
@@ -566,21 +610,7 @@ private fun ExchangeRateCard(
     )
     val value = "$${"%.2f".format(if (showingSaleRate) saleRate else purchaseRate)}"
     FinanceCard(
-        modifier = modifier.pointerInput(showingSaleRate) {
-            var dragDistance = 0f
-            detectHorizontalDragGestures(
-                onDragStart = { dragDistance = 0f },
-                onHorizontalDrag = { _, dragAmount ->
-                    dragDistance += dragAmount
-                },
-                onDragEnd = {
-                    when {
-                        dragDistance < -48f -> onShowSaleRate()
-                        dragDistance > 48f -> onShowPurchaseRate()
-                    }
-                }
-            )
-        },
+        modifier = modifier,
         containerColor = MaterialTheme.colorScheme.surface,
         borderColor = MaterialTheme.colorScheme.outlineVariant,
         contentPadding = PaddingValues(14.dp)
@@ -896,6 +926,66 @@ private fun PrimaryIncomeDialog(
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) } }
+    )
+}
+
+@Composable
+private fun AvailableBalanceDialog(
+    initialValue: Double,
+    calculatedValue: Double,
+    hasManualOverride: Boolean,
+    onConfirm: (Double) -> Unit,
+    onRestoreAutomatic: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    var amount by remember(initialValue) {
+        mutableStateOf(if (initialValue > 0) initialValue.toInputAmount() else "")
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.summary_available_dialog_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = amount,
+                    onValueChange = { amount = it },
+                    modifier = Modifier.clearZeroOnFocus(amount) { amount = it },
+                    label = { Text(stringResource(R.string.summary_available_dialog_label)) },
+                    prefix = { Text(stringResource(R.string.prefix_uyu)) },
+                    singleLine = true
+                )
+                Text(
+                    stringResource(
+                        R.string.summary_available_dialog_auto,
+                        calculatedValue.formatUYU()
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(amount.replace(",", ".").toDoubleOrNull() ?: 0.0)
+                }
+            ) {
+                Text(stringResource(R.string.action_save))
+            }
+        },
+        dismissButton = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (hasManualOverride) {
+                    TextButton(onClick = onRestoreAutomatic) {
+                        Text(stringResource(R.string.action_restore_auto))
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        }
     )
 }
 

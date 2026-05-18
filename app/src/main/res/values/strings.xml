@@ -15,6 +15,7 @@
     <string name="action_edit">Editar</string>
     <string name="action_delete">Eliminar</string>
     <string name="action_add">Añadir</string>
+    <string name="action_restore_auto">Restaurar autom&#225;tico</string>
     <string name="action_add_anyway">Agregar igual</string>
     <string name="action_select_all">Seleccionar todos</string>
     <string name="action_clear_selection">Deseleccionar todos</string>
@@ -76,7 +77,11 @@
     <string name="common_filter_paid">Pagados</string>
 
     <string name="summary_margin_label">Margen disponible</string>
-    <string name="summary_margin_hint">Disponible luego de gastos y donativos</string>
+    <string name="summary_margin_hint">Disponible actual menos obligaciones restantes</string>
+    <string name="summary_margin_hint_adjusted">Disponible actual ajustado manualmente</string>
+    <string name="summary_available_balance">Disponible actual</string>
+    <string name="summary_pending_obligations">Obligaciones restantes</string>
+    <string name="summary_edit_available_balance">Editar disponible actual</string>
     <string name="summary_exchange_rate">Tipo de cambio</string>
     <string name="summary_exchange_purchase">Compra</string>
     <string name="summary_exchange_sale">Venta</string>
@@ -126,6 +131,9 @@
     <string name="dialog_variable_income_title_edit">Editar ingreso variable</string>
     <string name="dialog_rate_title">Tipo de cambio</string>
     <string name="dialog_rate_label">Pesos por dólar</string>
+    <string name="summary_available_dialog_title">Disponible actual</string>
+    <string name="summary_available_dialog_label">Saldo actual en cuenta</string>
+    <string name="summary_available_dialog_auto">C&#225;lculo autom&#225;tico: %1$s</string>
 
     <string name="banner_read_only">Mes anterior, solo lectura</string>
 

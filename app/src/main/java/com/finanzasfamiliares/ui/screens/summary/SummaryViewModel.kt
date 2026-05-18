@@ -70,6 +70,18 @@ class SummaryViewModel @Inject constructor(
         }
     }
 
+    fun updateAvailableBalanceOverride(amountUYU: Double) {
+        viewModelScope.launch {
+            repo.updateAvailableBalanceOverride(_yearMonth.value, amountUYU)
+        }
+    }
+
+    fun clearAvailableBalanceOverride() {
+        viewModelScope.launch {
+            repo.updateAvailableBalanceOverride(_yearMonth.value, null)
+        }
+    }
+
     fun upsertVariableIncome(income: MoneyEntry) {
         viewModelScope.launch { repo.upsertVariableIncome(_yearMonth.value, income) }
     }
