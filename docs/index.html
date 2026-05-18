@@ -5,18 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light">
     <title>Finanzas Familiares</title>
-    <link rel="stylesheet" href="./styles.css?v=20260518-4">
+    <link rel="stylesheet" href="./styles.css?v=20260518-5">
   </head>
   <body>
     <div id="app" class="app-shell">
       <aside class="sidebar" aria-label="Navegacion principal">
-        <div class="brand-block">
-          <div class="brand-mark" aria-hidden="true">F</div>
+        <a id="brand-home" class="brand-block brand-link" href="#summary" aria-label="Ir al resumen del mes actual">
+          <img class="brand-mark" src="./assets/app-logo.png" alt="" aria-hidden="true">
           <div>
             <p class="eyebrow">Finanzas</p>
             <h1>Familiares</h1>
           </div>
-        </div>
+        </a>
         <div id="family-chip" class="family-chip skeleton">Conectando...</div>
         <nav class="nav-list">
           <button class="nav-item active" data-route="summary" type="button">Inicio</button>
@@ -53,6 +53,6 @@
     <dialog id="modal" class="modal"></dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="./app.js?v=20260518-4"></script>
+    <script type="module" src="./app.js?v=20260518-5"></script>
   </body>
 </html>

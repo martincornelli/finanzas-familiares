@@ -100,6 +100,7 @@ const state = {
 };
 
 const appShell = document.querySelector("#app");
+const brandHomeLink = document.querySelector("#brand-home");
 const screen = document.querySelector("#screen");
 const modal = document.querySelector("#modal");
 const toast = document.querySelector("#toast");
@@ -233,6 +234,14 @@ async function loadPreviousMonth(yearMonth) {
 }
 
 function bindChrome() {
+  brandHomeLink.addEventListener("click", (event) => {
+    event.preventDefault();
+    state.route = "summary";
+    if (location.hash !== "#summary") {
+      location.hash = "summary";
+    }
+    setMonth(currentYearMonth());
+  });
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => {
       location.hash = button.dataset.route;
