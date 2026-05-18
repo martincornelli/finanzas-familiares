@@ -254,7 +254,7 @@ function bindChrome() {
   monthPrev.addEventListener("click", () => goToNearestMonth(-1));
   monthNext.addEventListener("click", () => goToNearestMonth(1));
   currentMonthButton.addEventListener("click", () => setMonth(currentYearMonth()));
-  generateMonthButton.addEventListener("click", openGenerateMonthsDialog);
+  generateMonthButton.addEventListener("click", () => openGenerateMonthsDialog());
   deleteMonthsButton.addEventListener("click", openDeleteMonthsDialog);
   monthPicker.addEventListener("click", openMonthPicker);
 }
@@ -340,9 +340,14 @@ function renderChrome() {
       ? "Conectando..."
       : "Sin familia activa";
   const hasFamily = Boolean(state.family);
-  monthPrev.disabled = !hasFamily;
+  const navigableMonths = [...new Set([...state.availableMonths, state.yearMonth])].sort();
+  const currentMonthIndex = navigableMonths.indexOf(state.yearMonth);
+  const hasPreviousMonth = currentMonthIndex > 0;
+  const hasNextMonth = currentMonthIndex >= 0 && currentMonthIndex < navigableMonths.length - 1;
+  monthPrev.disabled = !hasFamily || !hasPreviousMonth;
   monthPicker.disabled = !hasFamily;
   monthNext.disabled = !hasFamily;
+  monthNext.title = hasNextMonth ? "Mes siguiente" : "Agregar meses posteriores";
   currentMonthButton.disabled = !hasFamily;
   generateMonthButton.disabled = !hasFamily;
   deleteMonthsButton.disabled = !hasFamily || state.isDeletingMonths;
@@ -1376,7 +1381,16 @@ function asPending(item) {
   return { ...item, paid: false };
 }
 
-function openGenerateMonthsDialog() {
+function openGenerateMonthsDialog(options = {}) {
+  const fromNavigation = options.source === "navigation";
+  const lastAvailableKey = state.availableMonths.slice().sort().at(-1);
+  const startKey = !lastAvailableKey || lastAvailableKey < state.yearMonth
+    ? state.yearMonth
+    : lastAvailableKey;
+  const firstNewMonthKey = addMonths(startKey, 1);
+  const helperText = fromNavigation
+    ? `No hay meses posteriores creados. Para avanzar a ${escapeHtml(formatMonthLabel(firstNewMonthKey))}, confirma cuantos meses queres agregar.`
+    : `Se crean meses consecutivos desde ${escapeHtml(formatMonthLabel(firstNewMonthKey))}, heredando gastos fijos, tarjeta, deudas, donativos recurrentes y ahorros.`;
   openModal({
     title: "Agregar meses",
     body: `
@@ -1385,7 +1399,7 @@ function openGenerateMonthsDialog() {
           <label for="months-count">Cantidad de meses</label>
           <input id="months-count" class="input" inputmode="numeric" min="1" max="36" value="1" required>
         </div>
-        <p class="muted">Se crean meses consecutivos desde ${escapeHtml(formatMonthLabel(state.yearMonth))}, heredando gastos fijos, tarjeta, deudas, donativos recurrentes y ahorros.</p>
+        <p class="muted">${helperText}</p>
       </form>
     `,
     footer: `
@@ -1512,8 +1526,16 @@ function monthKeysFrom(yearMonth) {
 function goToNearestMonth(direction) {
   const months = [...new Set([...state.availableMonths, state.yearMonth])].sort();
   const currentIndex = months.indexOf(state.yearMonth);
-  const target = months[currentIndex + direction] || addMonths(state.yearMonth, direction);
-  setMonth(target);
+  const target = months[currentIndex + direction];
+  if (target) {
+    setMonth(target);
+    return;
+  }
+  if (direction > 0) {
+    openGenerateMonthsDialog({ source: "navigation" });
+    return;
+  }
+  toastMessage("No hay meses anteriores");
 }
 
 function setMonth(yearMonth) {
