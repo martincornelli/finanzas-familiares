@@ -24,6 +24,7 @@
   --metric-bg: rgba(255, 255, 255, 0.52);
   --paid-bg: #e0f4e5;
   --paid-ink: #173d2b;
+  --danger-soft: #ffdad6;
   --shadow: 0 20px 45px rgba(22, 46, 38, 0.12);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -45,6 +46,7 @@
   --metric-bg: rgba(255, 255, 255, 0.06);
   --paid-bg: #173d2b;
   --paid-ink: #ddf3e5;
+  --danger-soft: #4b1514;
   --shadow: 0 20px 45px rgba(0, 0, 0, 0.34);
 }
 
@@ -354,6 +356,15 @@ h3 {
 .chip-button,
 .filter-chip {
   background: var(--surface);
+}
+
+.danger-chip {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.danger-chip:hover {
+  background: var(--danger-soft);
 }
 
 .filter-chip.active {

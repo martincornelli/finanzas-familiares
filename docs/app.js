@@ -9,6 +9,7 @@ import {
   getFirestore,
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   documentId,
   getDoc,
@@ -94,6 +95,7 @@ const state = {
   monthsUnsubscribe: null,
   isBooting: true,
   fatalError: null,
+  isDeletingMonths: false,
   appearance: loadAppearance()
 };
 
@@ -107,6 +109,7 @@ const monthPrev = document.querySelector("#month-prev");
 const monthNext = document.querySelector("#month-next");
 const currentMonthButton = document.querySelector("#current-month");
 const generateMonthButton = document.querySelector("#generate-month");
+const deleteMonthsButton = document.querySelector("#delete-months");
 
 bindChrome();
 applyAppearance();
@@ -243,6 +246,7 @@ function bindChrome() {
   monthNext.addEventListener("click", () => goToNearestMonth(1));
   currentMonthButton.addEventListener("click", () => setMonth(currentYearMonth()));
   generateMonthButton.addEventListener("click", openGenerateMonthsDialog);
+  deleteMonthsButton.addEventListener("click", openDeleteMonthsDialog);
   monthPicker.addEventListener("click", openMonthPicker);
 }
 
@@ -332,6 +336,7 @@ function renderChrome() {
   monthNext.disabled = !hasFamily;
   currentMonthButton.disabled = !hasFamily;
   generateMonthButton.disabled = !hasFamily;
+  deleteMonthsButton.disabled = !hasFamily || state.isDeletingMonths;
 }
 
 function renderSetup() {
@@ -1393,6 +1398,38 @@ function openGenerateMonthsDialog() {
   });
 }
 
+function openDeleteMonthsDialog() {
+  const affectedMonths = monthKeysFrom(state.yearMonth);
+  const affectedCount = affectedMonths.length;
+  openModal({
+    title: "Eliminar meses",
+    body: `
+      <form id="delete-months-form" class="form-grid">
+        <p class="muted">Se eliminara ${escapeHtml(formatMonthLabel(state.yearMonth))} y todos los meses posteriores. Los meses anteriores quedan intactos.</p>
+        <div class="metric-grid">
+          ${metricPill("Mes inicial", formatMonthLabel(state.yearMonth))}
+          ${metricPill("Meses afectados", String(affectedCount))}
+        </div>
+      </form>
+    `,
+    footer: `
+      <button class="secondary-button" data-action="cancel" type="button">Cancelar</button>
+      <button class="danger-button" form="delete-months-form" type="submit">Eliminar</button>
+    `,
+    bind: (dialog) => {
+      dialog.querySelector("#delete-months-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await withToastError(async () => {
+          const nextSelectedMonth = await deleteMonthsFrom(state.yearMonth);
+          closeModal();
+          setMonth(nextSelectedMonth);
+          toastMessage(affectedCount === 1 ? "Mes eliminado" : `${affectedCount} meses eliminados`);
+        });
+      });
+    }
+  });
+}
+
 async function generateFutureMonths(monthsAhead) {
   if (monthsAhead <= 0) return state.yearMonth;
   const lastAvailableKey = state.availableMonths.slice().sort().at(-1);
@@ -1421,6 +1458,46 @@ async function generateFutureMonths(monthsAhead) {
     });
   }
   return lastCreatedKey;
+}
+
+async function deleteMonthsFrom(yearMonth) {
+  const currentKey = currentYearMonth();
+  const monthKeys = monthKeysFrom(yearMonth);
+  const remainingMonths = [...new Set([...state.availableMonths, yearMonth])]
+    .filter((key) => key < yearMonth)
+    .sort();
+  const nextSelectedMonth = remainingMonths.at(-1) || currentKey;
+  const newPlanningLimit = remainingMonths.at(-1) || "";
+
+  state.isDeletingMonths = true;
+  renderChrome();
+  state.monthUnsubscribe?.();
+  state.monthUnsubscribe = null;
+
+  try {
+    for (const key of monthKeys) {
+      await deleteDoc(monthRef(key));
+    }
+    if ((state.config.planningThroughYearMonth || "") !== newPlanningLimit) {
+      await setDoc(configRef(), {
+        ...state.config,
+        planningThroughYearMonth: newPlanningLimit
+      });
+    }
+    if (nextSelectedMonth === currentKey && !remainingMonths.includes(currentKey)) {
+      await ensureMonthDocument(currentKey);
+    }
+    return nextSelectedMonth;
+  } finally {
+    state.isDeletingMonths = false;
+    renderChrome();
+  }
+}
+
+function monthKeysFrom(yearMonth) {
+  return [...new Set([...state.availableMonths, yearMonth])]
+    .filter((key) => key >= yearMonth)
+    .sort();
 }
 
 function goToNearestMonth(direction) {
