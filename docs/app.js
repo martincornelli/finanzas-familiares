@@ -242,7 +242,7 @@ function bindChrome() {
   monthPrev.addEventListener("click", () => goToNearestMonth(-1));
   monthNext.addEventListener("click", () => goToNearestMonth(1));
   currentMonthButton.addEventListener("click", () => setMonth(currentYearMonth()));
-  generateMonthButton.addEventListener("click", generateNextMonth);
+  generateMonthButton.addEventListener("click", openGenerateMonthsDialog);
   monthPicker.addEventListener("click", openMonthPicker);
 }
 
@@ -586,8 +586,16 @@ function renderSavings() {
         <div class="hero-header">
           <div>
             <span class="metric-label">Total ahorros</span>
-            <div class="hero-value">${formatUYU(totals.uyu)}</div>
-            <p class="hero-subtitle">${formatUSD(totals.usd)}</p>
+            <div class="savings-total-grid">
+              <div class="savings-total-amount">
+                <span class="metric-label">Pesos</span>
+                <strong>${formatUYU(totals.uyu)}</strong>
+              </div>
+              <div class="savings-total-amount">
+                <span class="metric-label">Dolares</span>
+                <strong>${formatUSD(totals.usd)}</strong>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -1354,13 +1362,65 @@ function asPending(item) {
   return { ...item, paid: false };
 }
 
-async function generateNextMonth() {
-  await withToastError(async () => {
-    const next = addMonths(state.yearMonth, 1);
-    await ensureMonthDocument(next);
-    setMonth(next);
-    toastMessage("Mes generado");
+function openGenerateMonthsDialog() {
+  openModal({
+    title: "Agregar meses",
+    body: `
+      <form id="generate-months-form" class="form-grid">
+        <div class="field">
+          <label for="months-count">Cantidad de meses</label>
+          <input id="months-count" class="input" inputmode="numeric" min="1" max="36" value="1" required>
+        </div>
+        <p class="muted">Se crean meses consecutivos desde ${escapeHtml(formatMonthLabel(state.yearMonth))}, heredando gastos fijos, tarjeta, deudas, donativos recurrentes y ahorros.</p>
+      </form>
+    `,
+    footer: `
+      <button class="secondary-button" data-action="cancel" type="button">Cancelar</button>
+      <button class="primary-button" form="generate-months-form" type="submit">Agregar</button>
+    `,
+    bind: (dialog) => {
+      dialog.querySelector("#generate-months-form").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const count = Math.max(1, Math.min(36, parseInt(dialog.querySelector("#months-count").value, 10) || 1));
+        await withToastError(async () => {
+          const lastKey = await generateFutureMonths(count);
+          closeModal();
+          setMonth(lastKey);
+          toastMessage(count === 1 ? "Mes agregado" : `${count} meses agregados`);
+        });
+      });
+    }
   });
+}
+
+async function generateFutureMonths(monthsAhead) {
+  if (monthsAhead <= 0) return state.yearMonth;
+  const lastAvailableKey = state.availableMonths.slice().sort().at(-1);
+  const startKey = !lastAvailableKey || lastAvailableKey < state.yearMonth
+    ? state.yearMonth
+    : lastAvailableKey;
+  let current = await ensureMonthDocument(startKey);
+  let lastCreatedKey = current.yearMonth;
+  for (let index = 0; index < monthsAhead; index += 1) {
+    const nextKey = addMonths(current.yearMonth, 1);
+    const existingSnap = await getDoc(monthRef(nextKey));
+    if (existingSnap.exists()) {
+      current = normalizeMonth(existingSnap.data(), nextKey);
+      lastCreatedKey = current.yearMonth;
+    } else {
+      const nextMonth = rolloverMonth(current, nextKey);
+      await setDoc(monthRef(nextKey), nextMonth);
+      current = nextMonth;
+      lastCreatedKey = nextKey;
+    }
+  }
+  if ((state.config.planningThroughYearMonth || "") < lastCreatedKey) {
+    await setDoc(configRef(), {
+      ...state.config,
+      planningThroughYearMonth: lastCreatedKey
+    });
+  }
+  return lastCreatedKey;
 }
 
 function goToNearestMonth(direction) {
