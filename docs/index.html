@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>Finanzas Familiares</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <aside class="sidebar" aria-label="Navegacion principal">
+        <div class="brand-block">
+          <div class="brand-mark" aria-hidden="true">F</div>
+          <div>
+            <p class="eyebrow">Finanzas</p>
+            <h1>Familiares</h1>
+          </div>
+        </div>
+        <div id="family-chip" class="family-chip skeleton">Conectando...</div>
+        <nav class="nav-list">
+          <button class="nav-item active" data-route="summary" type="button">Inicio</button>
+          <button class="nav-item" data-route="expenses" type="button">Gastos</button>
+          <button class="nav-item" data-route="donations" type="button">Donativos</button>
+          <button class="nav-item" data-route="savings" type="button">Ahorros</button>
+          <button class="nav-item" data-route="analysis" type="button">Analisis</button>
+          <button class="nav-item" data-route="config" type="button">Config</button>
+        </nav>
+      </aside>
+
+      <section class="workspace" aria-live="polite">
+        <header class="topbar">
+          <div class="month-control">
+            <button id="month-prev" class="icon-button" type="button" title="Mes anterior">‹</button>
+            <button id="month-picker" class="month-title" type="button">Mes actual</button>
+            <button id="month-next" class="icon-button" type="button" title="Mes siguiente">›</button>
+          </div>
+          <div class="topbar-actions">
+            <button id="current-month" class="chip-button" type="button">Hoy</button>
+            <button id="generate-month" class="chip-button" type="button">+ mes</button>
+          </div>
+        </header>
+        <main id="screen" class="screen">
+          <div class="loading-panel">
+            <div class="spinner"></div>
+            <span>Cargando datos...</span>
+          </div>
+        </main>
+      </section>
+    </div>
+
+    <dialog id="modal" class="modal"></dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
