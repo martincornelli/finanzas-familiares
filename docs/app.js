@@ -48,6 +48,7 @@ const CARD_KIND = {
 };
 const THEME_MODES = ["system", "light", "dark"];
 const ACCENT_COLORS = ["green", "blue", "teal", "indigo", "violet", "slate"];
+const EXPENSE_SECTION_FIELDS = ["fixedExpenses", "variableExpenses", "cardExpenses", "debts"];
 
 const defaultCategories = [
   "Comida",
@@ -96,6 +97,7 @@ const state = {
   isBooting: true,
   fatalError: null,
   isDeletingMonths: false,
+  expenseCollapsedSections: new Set(EXPENSE_SECTION_FIELDS),
   appearance: loadAppearance()
 };
 
@@ -519,6 +521,10 @@ function renderExpenses() {
         <button class="filter-chip" data-filter="pending" type="button">Pendientes</button>
         <button class="filter-chip" data-filter="paid" type="button">Pagados</button>
       </div>
+      <div class="toolbar-right">
+        <button class="filter-chip" data-expense-view="expand-all" type="button">Expandir todos</button>
+        <button class="filter-chip" data-expense-view="collapse-all" type="button">Colapsar todos</button>
+      </div>
     </div>
     <div id="expense-sections" class="screen-grid">
       ${sections.map(([field, label, icon, items]) => renderExpenseSection(field, label, icon, items, cardRate, search, "all")).join("")}
@@ -527,14 +533,22 @@ function renderExpenses() {
 
   const searchInput = screen.querySelector("#expense-search");
   const filterButtons = [...screen.querySelectorAll("[data-filter]")];
+  const viewButtons = [...screen.querySelectorAll("[data-expense-view]")];
+  const updateViewButtons = () => {
+    const allCollapsed = sections.every(([field]) => state.expenseCollapsedSections.has(field));
+    const allExpanded = sections.every(([field]) => !state.expenseCollapsedSections.has(field));
+    viewButtons.find((button) => button.dataset.expenseView === "expand-all").disabled = allExpanded;
+    viewButtons.find((button) => button.dataset.expenseView === "collapse-all").disabled = allCollapsed;
+  };
   const rerenderSections = () => {
     const filter = filterButtons.find((button) => button.classList.contains("active"))?.dataset.filter || "all";
     const queryText = searchInput.value.trim();
     screen.querySelector("#expense-sections").innerHTML = sections
       .map(([field, label, icon, items]) => renderExpenseSection(field, label, icon, items, cardRate, queryText, filter))
       .join("");
+    updateViewButtons();
     bindListActions();
-    bindExpenseButtons();
+    bindExpenseButtons(rerenderSections);
   };
   searchInput.addEventListener("input", rerenderSections);
   filterButtons.forEach((button) => {
@@ -544,7 +558,18 @@ function renderExpenses() {
       rerenderSections();
     });
   });
-  bindExpenseButtons();
+  viewButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.expenseView === "expand-all") {
+        state.expenseCollapsedSections.clear();
+      } else {
+        state.expenseCollapsedSections = new Set(EXPENSE_SECTION_FIELDS);
+      }
+      rerenderSections();
+    });
+  });
+  updateViewButtons();
+  bindExpenseButtons(rerenderSections);
   bindListActions();
 }
 
@@ -557,19 +582,35 @@ function renderExpenseSection(field, label, icon, items, rate, queryText, filter
     return matchesSearch && matchesFilter;
   });
   const total = filtered.reduce((sum, item) => sum + totalEntryUYU(item, rate), 0);
+  const collapsed = state.expenseCollapsedSections.has(field);
+  const toggleTitle = collapsed ? "Expandir seccion" : "Colapsar seccion";
   return `
     <section class="finance-card">
       ${sectionTitle(`${label} · ${formatUYU(total)}`, icon, `<button class="text-button" data-add-expense="${field}" type="button">Agregar</button>`)}
-      <div class="item-list">
+      <div class="section-actions expense-section-actions">
+        <button class="text-button" data-toggle-expense-section="${field}" type="button" title="${toggleTitle}" aria-expanded="${String(!collapsed)}">${collapsed ? "Expandir" : "Colapsar"}</button>
+      </div>
+      <div class="item-list ${collapsed ? "hidden" : ""}">
         ${renderMoneyList(filtered, field, rate)}
       </div>
     </section>
   `;
 }
 
-function bindExpenseButtons() {
+function bindExpenseButtons(rerenderSections = null) {
   screen.querySelectorAll("[data-add-expense]").forEach((button) => {
     button.addEventListener("click", () => openExpenseDialog(button.dataset.addExpense));
+  });
+  screen.querySelectorAll("[data-toggle-expense-section]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const field = button.dataset.toggleExpenseSection;
+      if (state.expenseCollapsedSections.has(field)) {
+        state.expenseCollapsedSections.delete(field);
+      } else {
+        state.expenseCollapsedSections.add(field);
+      }
+      rerenderSections?.();
+    });
   });
 }
 
@@ -1228,6 +1269,12 @@ function expenseForm(field, item = null) {
       <span>Aplicar a los meses siguientes</span>
     </label>
   ` : "";
+  const paidExtra = `
+    <label class="checkbox-line">
+      <input id="expense-paid" type="checkbox" ${isPaid(item || {}) ? "checked" : ""}>
+      <span>Ya fue efectuado</span>
+    </label>
+  `;
   const installmentExtras = field === "cardExpenses" || field === "debts" ? `
     <div id="installment-fields" class="inline-fields ${field === "cardExpenses" && item?.kind !== "INSTALLMENT" ? "hidden" : ""}">
       <div class="field">
@@ -1240,7 +1287,7 @@ function expenseForm(field, item = null) {
       </div>
     </div>
   ` : "";
-  return base.replace("</form>", `${cardExtras}${installmentExtras}${futureExtras}</form>`);
+  return base.replace("</form>", `${cardExtras}${installmentExtras}${paidExtra}${futureExtras}</form>`);
 }
 
 function readMoneyEntry(root, item = null) {
@@ -1261,6 +1308,7 @@ function readMoneyEntry(root, item = null) {
 
 function readExpenseEntry(root, field, item = null) {
   const entry = readMoneyEntry(root, item);
+  entry.paid = Boolean(root.querySelector("#expense-paid")?.checked);
   if (field === "fixedExpenses") {
     entry.pinned = true;
   }
