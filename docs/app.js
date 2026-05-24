@@ -1108,13 +1108,18 @@ function openExpenseDialog(field, item = null) {
     bind: (dialog) => {
       const kindField = dialog.querySelector("#expense-kind");
       const installmentFields = dialog.querySelector("#installment-fields");
-      kindField?.addEventListener("change", () => {
+      const futureRow = dialog.querySelector("#apply-to-future-row");
+      const updateCardTypeFields = () => {
+        if (!kindField) return;
         installmentFields?.classList.toggle("hidden", kindField.value !== CARD_KIND.INSTALLMENT);
-      });
+        futureRow?.classList.toggle("hidden", field === "cardExpenses" && kindField.value === CARD_KIND.RECURRING);
+      };
+      kindField?.addEventListener("change", updateCardTypeFields);
+      updateCardTypeFields();
       dialog.querySelector("#expense-form").addEventListener("submit", async (event) => {
         event.preventDefault();
         const entry = readExpenseEntry(dialog, field, item);
-        const applyToFuture = Boolean(dialog.querySelector("#apply-to-future")?.checked);
+        const applyToFuture = shouldApplyExpenseToFuture(dialog, field, entry);
         await withToastError(async () => {
           await upsertArrayItem(field, entry, { applyToFuture });
           closeModal();
@@ -1286,7 +1291,7 @@ function expenseForm(field, item = null) {
     </div>
   ` : "";
   const futureExtras = showApplyFuture ? `
-    <label class="checkbox-line">
+    <label id="apply-to-future-row" class="checkbox-line ${field === "cardExpenses" && item?.kind === CARD_KIND.RECURRING ? "hidden" : ""}">
       <input id="apply-to-future" type="checkbox" ${defaultApplyFuture ? "checked" : ""}>
       <span>Aplicar a los meses siguientes</span>
     </label>
@@ -1316,6 +1321,11 @@ function expenseForm(field, item = null) {
     </div>
   ` : "";
   return base.replace("</form>", `${cardExtras}${installmentExtras}${notesExtra}${paidExtra}${futureExtras}</form>`);
+}
+
+function shouldApplyExpenseToFuture(root, field, entry) {
+  if (field === "cardExpenses" && entry.kind === CARD_KIND.RECURRING) return true;
+  return Boolean(root.querySelector("#apply-to-future")?.checked);
 }
 
 function readMoneyEntry(root, item = null) {
