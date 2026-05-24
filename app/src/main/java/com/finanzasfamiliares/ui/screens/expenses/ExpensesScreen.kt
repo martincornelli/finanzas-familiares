@@ -347,6 +347,7 @@ fun ExpensesScreen(
                 textFields = listOf(
                     it.name,
                     it.category,
+                    it.notes,
                     fixedTypeLabel,
                     if (it.isInUSD()) usdShortLabel else uyuShortLabel
                 ),
@@ -372,6 +373,7 @@ fun ExpensesScreen(
                 textFields = listOf(
                     it.name,
                     it.category,
+                    it.notes,
                     variableTypeLabel,
                     if (it.isInUSD()) usdShortLabel else uyuShortLabel
                 ),
@@ -405,6 +407,7 @@ fun ExpensesScreen(
                 textFields = listOf(
                     expense.name,
                     expense.category,
+                    expense.notes,
                     cardTypeLabel,
                     kindLabel,
                     if (expense.isInUSD()) usdShortLabel else uyuShortLabel
@@ -432,6 +435,7 @@ fun ExpensesScreen(
                 textFields = listOf(
                     it.name,
                     it.category,
+                    it.notes,
                     debtTypeLabel,
                     debtInstallmentsLabel,
                     if (it.isInUSD()) usdShortLabel else uyuShortLabel
@@ -1535,6 +1539,7 @@ private fun FixedExpenseDialog(
             isUSD = isUSD,
             currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
             isPinned = true,
+            notes = initial?.notes.orEmpty(),
             isPaid = initial?.isPaid ?: false
         )
     }
@@ -1635,6 +1640,7 @@ private fun MoneyEntryDialog(
             amountUYU = if (isUSD) 0.0 else parsed,
             isUSD = isUSD,
             currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
+            notes = initial?.notes.orEmpty(),
             isPaid = initial?.isPaid ?: false
         )
     }
@@ -1738,6 +1744,7 @@ private fun CardExpenseDialog(
             kind = kind,
             totalInstallments = if (kind == CardExpenseKind.INSTALLMENT) totalInst.toIntOrNull() ?: 1 else 1,
             currentInstallment = if (kind == CardExpenseKind.INSTALLMENT) currentInst.toIntOrNull() ?: 1 else 1,
+            notes = initial?.notes.orEmpty(),
             isPaid = initial?.isPaid ?: false
         )
     }
@@ -1884,6 +1891,7 @@ private fun DebtDialog(
             currency = if (isUSD) IncomeCurrency.USD else IncomeCurrency.UYU,
             totalInstallments = totalInst.toIntOrNull() ?: 1,
             currentInstallment = currentInst.toIntOrNull() ?: 1,
+            notes = initial?.notes.orEmpty(),
             isPaid = initial?.isPaid ?: false
         )
     }

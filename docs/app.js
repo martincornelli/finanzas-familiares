@@ -516,7 +516,7 @@ function renderExpenses() {
   screen.innerHTML = `
     <div class="toolbar">
       <div class="toolbar-left">
-        <input id="expense-search" class="input" type="search" placeholder="Buscar" style="width: min(320px, 100%);">
+        <input id="expense-search" class="input" type="search" placeholder="Buscar por nombre, monto o notas" style="width: min(320px, 100%);">
         <button class="filter-chip active" data-filter="all" type="button">Todos</button>
         <button class="filter-chip" data-filter="pending" type="button">Pendientes</button>
         <button class="filter-chip" data-filter="paid" type="button">Pagados</button>
@@ -574,9 +574,10 @@ function renderExpenses() {
 }
 
 function renderExpenseSection(field, label, icon, items, rate, queryText, filter) {
+  const normalizedQuery = normalizeSearchText(queryText);
+  const amountQuery = normalizeAmountSearch(queryText);
   const filtered = items.filter((item) => {
-    const haystack = `${item.name || ""} ${item.category || ""}`.toLowerCase();
-    const matchesSearch = haystack.includes(queryText.toLowerCase());
+    const matchesSearch = matchesExpenseSearch(item, rate, normalizedQuery, amountQuery);
     const isPaidItem = isPaid(item);
     const matchesFilter = filter === "all" || (filter === "paid" && isPaidItem) || (filter === "pending" && !isPaidItem);
     return matchesSearch && matchesFilter;
@@ -595,6 +596,25 @@ function renderExpenseSection(field, label, icon, items, rate, queryText, filter
       </div>
     </section>
   `;
+}
+
+function matchesExpenseSearch(item, rate, normalizedQuery, amountQuery) {
+  if (!normalizedQuery && !amountQuery) return true;
+  const searchParts = [
+    item.name,
+    item.category,
+    expenseNotes(item),
+    formatUYU(totalEntryUYU(item, rate)),
+    formatUYU(Number(item.amountUYU || 0)),
+    formatUSD(Number(item.amountUSD || 0)),
+    toInput(totalEntryUYU(item, rate)),
+    toInput(Number(item.amountUYU || 0)),
+    toInput(Number(item.amountUSD || 0))
+  ];
+  const haystack = searchParts.filter(Boolean).join(" ");
+  const matchesText = normalizedQuery ? normalizeSearchText(haystack).includes(normalizedQuery) : false;
+  const matchesAmount = amountQuery ? normalizeAmountSearch(haystack).includes(amountQuery) : false;
+  return matchesText || matchesAmount;
 }
 
 function bindExpenseButtons(rerenderSections = null) {
@@ -825,6 +845,7 @@ function renderMoneyList(items, type, rate) {
 function renderMoneyItem(item, type, rate) {
   const paid = isPaid(item);
   const supportsPayment = type !== "variableIncomes";
+  const notes = expenseNotes(item);
   const meta = [
     item.category,
     isInUSD(item) ? formatUSD(Number(item.amountUSD || 0)) : null,
@@ -839,6 +860,7 @@ function renderMoneyItem(item, type, rate) {
       <div>
         <p class="item-title">${escapeHtml(item.name || "Sin nombre")}</p>
         <p class="item-meta">${escapeHtml(meta || "Sin categoria")}</p>
+        ${notes ? `<p class="item-note">${escapeHtml(notes)}</p>` : ""}
       </div>
       <div class="item-actions">
         <span class="item-amount">${formatUYU(totalEntryUYU(item, rate))}</span>
@@ -1269,6 +1291,12 @@ function expenseForm(field, item = null) {
       <span>Aplicar a los meses siguientes</span>
     </label>
   ` : "";
+  const notesExtra = `
+    <div class="field">
+      <label for="expense-notes">Notas</label>
+      <textarea id="expense-notes" class="textarea" placeholder="Detalle opcional">${escapeHtml(expenseNotes(item))}</textarea>
+    </div>
+  `;
   const paidExtra = `
     <label class="checkbox-line">
       <input id="expense-paid" type="checkbox" ${isPaid(item || {}) ? "checked" : ""}>
@@ -1287,7 +1315,7 @@ function expenseForm(field, item = null) {
       </div>
     </div>
   ` : "";
-  return base.replace("</form>", `${cardExtras}${installmentExtras}${paidExtra}${futureExtras}</form>`);
+  return base.replace("</form>", `${cardExtras}${installmentExtras}${notesExtra}${paidExtra}${futureExtras}</form>`);
 }
 
 function readMoneyEntry(root, item = null) {
@@ -1308,6 +1336,7 @@ function readMoneyEntry(root, item = null) {
 
 function readExpenseEntry(root, field, item = null) {
   const entry = readMoneyEntry(root, item);
+  entry.notes = root.querySelector("#expense-notes")?.value.trim() || "";
   entry.paid = Boolean(root.querySelector("#expense-paid")?.checked);
   if (field === "fixedExpenses") {
     entry.pinned = true;
@@ -1888,6 +1917,21 @@ function isInUSD(item) {
 
 function isPaid(item) {
   return Boolean(item?.paid ?? item?.isPaid);
+}
+
+function expenseNotes(item) {
+  return String(item?.notes ?? item?.note ?? item?.description ?? "").trim();
+}
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalizeAmountSearch(value) {
+  return String(value || "").replace(/[^\d]/g, "");
 }
 
 function savingsTotals(month) {

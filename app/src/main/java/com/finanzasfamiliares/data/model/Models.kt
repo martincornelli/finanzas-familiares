@@ -143,6 +143,7 @@ data class MoneyEntry(
     @field:PropertyName("usd")
     val isUSD: Boolean = false,
     val currency: String = "",
+    val notes: String = "",
     @get:PropertyName("paid")
     @field:PropertyName("paid")
     val isPaid: Boolean = false
@@ -221,6 +222,7 @@ data class FixedExpense(
     @get:PropertyName("pinned")
     @field:PropertyName("pinned")
     val isPinned: Boolean = true,
+    val notes: String = "",
     @get:PropertyName("paid")
     @field:PropertyName("paid")
     val isPaid: Boolean = false
@@ -255,6 +257,7 @@ data class CardExpense(
     val kind: String = CardExpenseKind.PUNCTUAL,
     val totalInstallments: Int = 1,
     val currentInstallment: Int = 1,
+    val notes: String = "",
     @get:PropertyName("paid")
     @field:PropertyName("paid")
     val isPaid: Boolean = false
@@ -296,6 +299,7 @@ data class DebtEntry(
     val currency: String = "",
     val totalInstallments: Int = 1,
     val currentInstallment: Int = 1,
+    val notes: String = "",
     @get:PropertyName("paid")
     @field:PropertyName("paid")
     val isPaid: Boolean = false
